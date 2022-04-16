@@ -1,0 +1,296 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  Create a SageMaker Studio domain
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: 
+          default: Data Science Environment
+        Parameters:
+          - EnvName
+      - Label:
+          default: Amazon SageMaker Studio
+        Parameters: 
+          - DomainName
+          - AuthMode
+      - Label:
+          default: Network and Storage Configuration
+        Parameters:
+          - VPCId
+          - SageMakerStudioSubnetIds
+          - SageMakerSecurityGroupIds
+          - SageMakerStudioStorageKMSKeyId
+      - Label:
+          default: Permissions
+        Parameters:
+          - SageMakerDefaultExecutionRoleArn
+          - SetupLambdaExecutionRoleArn
+
+    ParameterLabels:
+      EnvName:
+        default: Environment name
+      DomainName:
+        default: Domain name
+      AuthMode:
+        default: Authentication mode
+      VPCId:
+        default: VPC
+      SageMakerStudioSubnetIds:
+        default: Subnet(s)
+      SageMakerSecurityGroupIds:
+        default: Security group(s)
+      SageMakerStudioStorageKMSKeyId:
+        default: Storage encryption key
+      NetworkAccessType:
+        default: Network access for SageMaker Studio
+      SageMakerDefaultExecutionRoleArn:
+        default: SageMaker default execution role
+      SetupLambdaExecutionRoleArn:
+        default: Execution role for setup Lambda function
+
+Outputs:
+  SageMakerDomainId:
+    Description: SageMaker Domain Id
+    Value: !GetAtt SageMakerStudioDomain.DomainId
+    Export:
+      Name: 'ds-sagemaker-domain-id'
+
+Parameters:
+  EnvName:
+    Type: String
+    AllowedPattern: '[a-z0-9\-]*'
+    Description: Please specify your SageMaker environment name.
+    Default: 'sagemaker-domain'
+
+  DomainName:
+    Type: String
+    Description: SageMaker Studio domain name. Leave empty to auto generate.
+    Default: ''
+
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose a VPC for SageMaker Studio and SageMaker workloads
+
+  SageMakerStudioSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Choose subnets or provide a comma-delimited list of subnet ids
+
+  SageMakerSecurityGroupIds:
+    Type: String
+    Description: Choose security groups for SageMaker Studio and SageMaker workloads
+    Default: ''
+
+  SageMakerStudioStorageKMSKeyId:
+    Type: String
+    Description: SageMaker uses an AWS managed CMK to encrypt your EFS and EBS file systems by default. To use a customer managed CMK, enter its key Id.
+    Default: ''
+
+  NetworkAccessType:
+    Type: String
+    AllowedValues:
+      - 'PublicInternetOnly'
+      - 'VpcOnly'
+    Description: Choose how SageMaker Studio accesses resources over the Network
+    Default: 'PublicInternetOnly'
+
+  AuthMode:
+    Type: String
+    AllowedValues:
+      - 'IAM'
+      - 'SSO'
+    Description: The mode of authentication that members use to access the domain
+    Default: 'IAM'
+
+  SageMakerDefaultExecutionRoleArn:
+    Type: String
+    Description: The ARN of the SageMaker execution role
+
+  SetupLambdaExecutionRoleArn:
+    Type: String
+    Description: The ARN of the execution role for the Lambda function for SageMaker Studio setup
+
+Conditions:
+  GenerateDomainNameCondition: !Equals [ !Ref DomainName, '' ]
+  SageMakerEFSKMSKeyCondition: !Not [ !Equals [ !Ref SageMakerStudioStorageKMSKeyId, ''] ]
+  SMSecurityGroupIdsCondition: !Not [ !Equals [ !Ref SageMakerSecurityGroupIds, '' ] ]
+
+Rules:
+  SageMakerSecurityGroupIdsRule:
+    RuleCondition: !Equals [ !Ref NetworkAccessType, 'VpcOnly' ]
+    Assertions:
+      - Assert: !Not [ !Equals [ !Ref SageMakerSecurityGroupIds, '' ] ]
+        AssertDescription: Security group ids must be provided if network access type set to VPC only
+
+Resources:
+  SageMakerStudioDomain:
+    Type: AWS::SageMaker::Domain
+    Properties: 
+      AppNetworkAccessType: !Ref NetworkAccessType
+      AuthMode: !Ref AuthMode
+      DefaultUserSettings: 
+          ExecutionRole: !Ref SageMakerDefaultExecutionRoleArn
+          SecurityGroups: !If 
+            - SMSecurityGroupIdsCondition
+            - !Ref SageMakerSecurityGroupIds
+            - !Ref 'AWS::NoValue'  
+      DomainName: !If
+        - GenerateDomainNameCondition
+        - !Sub '${EnvName}-${AWS::Region}-sagemaker-domain'
+        - !Ref DomainName 
+      KmsKeyId: !If [ SageMakerEFSKMSKeyCondition, !Ref SageMakerStudioStorageKMSKeyId, !Ref 'AWS::NoValue' ]
+      SubnetIds: !Ref SageMakerStudioSubnetIds
+      VpcId: !Ref VPCId
+      Tags:
+        - Key: EnvironmentName
+          Value: !Ref EnvName
+
+  EnableSageMakerProjects:
+    Type: Custom::ResourceForEnablingSageMakerProjects
+    DependsOn: SageMakerStudioDomain
+    Properties:
+      ServiceToken: !GetAtt EnableSageMakerProjectsLambda.Arn
+      ExecutionRole: !Ref SageMakerDefaultExecutionRoleArn
+
+  DeleteKernelGatewayApps:
+    Type: Custom::DeleteKernelGatewayApps
+    Properties:
+      ServiceToken: !GetAtt DeleteKernelGatewayAppsLambda.Arn
+      DomainId: !GetAtt SageMakerStudioDomain.DomainId
+
+  DeleteKernelGatewayAppsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      ReservedConcurrentExecutions: 1
+      Code:
+        ZipFile: |
+          # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+          # SPDX-License-Identifier: MIT-0
+
+          import time
+          import boto3
+          import logging
+          import cfnresponse
+          from botocore.exceptions import ClientError
+
+          sm_client = boto3.client('sagemaker')
+          logger = logging.getLogger(__name__)
+
+          def delete_apps(domain_id):    
+              logging.info(f'Start deleting apps for domain id: {domain_id}')
+
+              try:
+                  sm_client.describe_domain(DomainId=domain_id)
+              except:
+                  logging.info(f'Cannot retrieve {domain_id}')
+                  return
+
+              for p in sm_client.get_paginator('list_apps').paginate(DomainIdEquals=domain_id):
+                  for a in p['Apps']:
+                      if a['AppType'] == 'KernelGateway' and a['Status'] != 'Deleted':
+                          sm_client.delete_app(DomainId=a['DomainId'], UserProfileName=a['UserProfileName'], AppType=a['AppType'], AppName=a['AppName'])
+                  
+              apps = 1
+              while apps:
+                  apps = 0
+                  for p in sm_client.get_paginator('list_apps').paginate(DomainIdEquals=domain_id):
+                      apps += len([a['AppName'] for a in p['Apps'] if a['AppType'] == 'KernelGateway' and a['Status'] != 'Deleted'])
+                  logging.info(f'Number of active KernelGateway apps: {str(apps)}')
+                  time.sleep(5)
+
+              logger.info(f'KernelGateway apps for {domain_id} deleted')
+              return
+
+          def lambda_handler(event, context):
+              response_data = {}
+              physicalResourceId = event.get('PhysicalResourceId')
+
+              try:
+                  if event['RequestType'] in ['Create', 'Update']:
+                      physicalResourceId = event.get('ResourceProperties')['DomainId']
+            
+                  elif event['RequestType'] == 'Delete':        
+                      delete_apps(physicalResourceId)
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, physicalResourceId=physicalResourceId)
+
+              except ClientError as exception:
+                  logging.error(exception)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, response_data, physicalResourceId=physicalResourceId, reason=str(exception))
+                
+      Description: Delete KernelGateway apps to clean up
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !Ref SetupLambdaExecutionRoleArn
+      Runtime: python3.8
+      Timeout: 900
+      Tags:
+        - Key: EnvironmentName
+          Value: !Ref EnvName
+
+  EnableSageMakerProjectsLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: SageMakerStudioDomain
+    Properties:
+      ReservedConcurrentExecutions: 1
+      Code:
+        ZipFile: |
+          # Function: EnableSagemakerProjects
+          # Purpose:  Enables Sagemaker Projects
+          import json
+          import boto3
+          import cfnresponse
+          from botocore.exceptions import ClientError
+          
+          client = boto3.client('sagemaker')
+          sc_client = boto3.client('servicecatalog')
+
+          def lambda_handler(event, context):
+              try:
+                  response_status = cfnresponse.SUCCESS
+
+                  if 'RequestType' in event and event['RequestType'] == 'Create':
+                      enable_sm_projects(event['ResourceProperties']['ExecutionRole'])
+                  cfnresponse.send(event, context, response_status, {}, '')
+              except ClientError as exception:
+                  print(exception)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, physicalResourceId=event.get('PhysicalResourceId'), reason=str(exception))
+            
+          def enable_sm_projects(studio_role_arn):
+              # enable Project on account level (accepts portfolio share)
+              response = client.enable_sagemaker_servicecatalog_portfolio()
+
+              # associate studio role with portfolio
+              response = sc_client.list_accepted_portfolio_shares()
+
+              portfolio_id = ''
+              for portfolio in response['PortfolioDetails']:
+                  if portfolio['ProviderName'] == 'Amazon SageMaker':
+                      portfolio_id = portfolio['Id']
+
+              response = sc_client.associate_principal_with_portfolio(
+                  PortfolioId=portfolio_id,
+                  PrincipalARN=studio_role_arn,
+                  PrincipalType='IAM'
+              )
+      Description: Enable Sagemaker Projects
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !Ref SetupLambdaExecutionRoleArn
+      Runtime: python3.8
+      Timeout: 60
+      Tags:
+        - Key: EnvironmentName
+          Value: !Ref EnvName
+
+  # SSM parameter
+  SageMakerDomainIdSSM:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: !Sub "${EnvName}-sagemaker-domain-id"
+      Type: String
+      Value: !GetAtt SageMakerStudioDomain.DomainId
+      Description: !Sub 'SageMaker Studio domain id for ${SageMakerStudioDomain.DomainArn}'

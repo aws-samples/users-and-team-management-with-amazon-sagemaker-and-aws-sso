@@ -1,0 +1,381 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a secure VPC environment for SageMaker domain and SAML backend Lambda function
+
+Outputs:
+  SageMakerVPCId:
+    Value: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+  PublicSubnetId:
+    Value: !Ref PublicSubnet   
+  SageMakerDomainPrivateSubnetId:
+    Value: !Ref SageMakerDomainPrivateSubnet
+  SAMLBackendPrivateSubnetId:
+    Value: !Ref SAMLBackedPrivateSubnet
+  SAMLBackendSecurityGroupId:
+    Value: !GetAtt SAMLBackendSecurityGroup.GroupId
+  SageMakerDomainSecurityGroupId:
+    Value: !GetAtt SageMakerDomainSecurityGroup.GroupId
+  APIGatewayVPCE:
+    Value: !Ref APIGatewayVPCE
+
+Parameters: 
+  EnvironmentName:
+    Type: String
+
+  ExistingVPCId:
+    Type: String
+    Default: ''
+    Description: Enter an existing VPC Id for deployment or leave empty to create a new VPC
+
+  VPCCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for SageMaker and SAML backend VPC
+
+  CreatePrivateSubnets:
+    AllowedValues:
+      - 'YES'
+      - 'NO'
+    Default: 'YES'
+    Description: Set to NO when you want to re-use existing subnets in the existing VPC (existing VPC Id must be provided)
+    Type: String
+  
+  ExistingSAMLBackendPrivateSubnetId:
+    Description: Existing private subnet id for SAML backend
+    Default: ''
+    Type: String
+
+  ExistingSageMakerDomainPrivateSubnetId:
+    Description: Existing private subnet id for SageMaker domain
+    Default: ''
+    Type: String
+
+  SAMLBackedPrivateSubnetCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.0.0/19
+    Description: CIDR block for a private subnet for SAML backend
+
+  SageMakerDomainPrivateSubnetCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.32.0/19
+    Description: CIDR block for a private subnet for SageMaker domain
+
+  PublicSubnetCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.128.0/20
+    Description: CIDR block for a public subnet for Internet and NAT Gateways
+
+Rules:
+  PrivateSubnets:
+    RuleCondition: !Equals [ !Ref 'CreatePrivateSubnets', 'NO' ]
+    Assertions:
+      - Assert: !Not [!Equals [ !Ref 'ExistingVPCId', '' ]]
+        AssertDescription: You can set Create private subnets to NO only if you provide an existing VPC id
+      - Assert: !And
+        - !Not [ !Equals [ !Ref 'ExistingSAMLBackendPrivateSubnetId', '' ] ]
+        - !Not [ !Equals [ !Ref 'ExistingSageMakerDomainPrivateSubnetId', '' ] ]
+        AssertDescription: You must provide existing private subnet ids for both SAML backend and SageMaker domain if you select not to create private subnets
+   
+Conditions:
+  CreateVPCCondition: !Equals [ !Ref ExistingVPCId, '']
+  PrivateSubnetsCondition: !Equals [!Ref 'CreatePrivateSubnets', 'YES']
+
+Resources:
+
+######## VPC / Subnets ########
+  SageMakerVPC:
+    Type: AWS::EC2::VPC
+    Condition: CreateVPCCondition
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Delete
+    Properties:
+      CidrBlock: !Ref VPCCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub vpc-${EnvironmentName}
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  
+  SAMLBackedPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Delete
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      CidrBlock: !Ref SAMLBackedPrivateSubnetCIDR
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      Tags:
+        - Key: Name
+          Value: !Sub private-sn-1a-${EnvironmentName}-saml-backend
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+
+  SageMakerDomainPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Delete
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      CidrBlock: !Ref SageMakerDomainPrivateSubnetCIDR
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      Tags:
+        - Key: Name
+          Value: !Sub private-sn-1a-${EnvironmentName}-sm-domain
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName} 
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVPCCondition
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      CidrBlock: !Ref PublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      Tags:
+        - Key: Name
+          Value: !Sub public-sn-1a-${EnvironmentName}
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+
+####### SecurityGroup SageMaker ########
+  SageMakerDomainSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SecurityGroupEgress:
+        - Description: All traffic is allowed outbound
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Sub sg-${EnvironmentName}-sm-domain
+      - Key: EnvironmentName
+        Value: !Ref EnvironmentName  
+      GroupDescription: !Sub Allow all outbound and inbound from ${VPCCIDR}
+
+  SageMakerDomainSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Self-ingress to enable communication between instances within the same SG
+      IpProtocol: "-1"
+      FromPort: 0
+      ToPort: 65535
+      CidrIp: !Ref VPCCIDR
+      GroupId: !Ref SageMakerDomainSecurityGroup       
+
+####### Security Group SAML backend ########
+  SAMLBackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SecurityGroupIngress:
+        - Description: Ingress TCP 443 from SageMaker security group
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !GetAtt SageMakerDomainSecurityGroup.GroupId
+      SecurityGroupEgress:
+        - Description: All traffic is allowed outbound
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Sub sg-${EnvironmentName}-saml-backend
+      - Key: EnvironmentName
+        Value: !Ref EnvironmentName  
+      GroupDescription: !Sub Allow inbound from ${SageMakerVPC} on 443    
+
+  SAMLBackendSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: '-1'
+      CidrIp: !Ref VPCCIDR
+      Description: !Sub Allow all traffic from ${SageMakerVPC}
+      GroupId: !GetAtt SAMLBackendSecurityGroup.GroupId
+
+####### SecurityGroup VPCE ########
+  VPCESecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS/TLS for VPC Endpoints
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SecurityGroupIngress:
+        - Description: Ingress TCP 443 from SageMaker security group
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !GetAtt SageMakerDomainSecurityGroup.GroupId
+      SecurityGroupEgress:
+        - Description: All traffic is allowed outbound
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub sg-${EnvironmentName}-vpce
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+
+  VPCESecurityGroupVPCIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref VPCCIDR
+      Description: !Sub Allow all traffic from from ${SageMakerVPC}
+      IpProtocol: '-1'
+      GroupId: !GetAtt VPCESecurityGroup.GroupId
+
+######## NAT Gateways/ IGW Gateway ########
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Condition: CreateVPCCondition
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub igw-${EnvironmentName}
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateVPCCondition
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateVPCCondition
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub nat-gw-1-${EnvironmentName}
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName        
+
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    Condition: CreateVPCCondition
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc 
+
+######## Route Tables ########
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateVPCCondition
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      Tags:
+        - Key: Name
+          Value: !Sub public-rtb-${EnvironmentName}
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  PublicSubnetRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateVPCCondition
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetVPCSageMakerRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCCondition
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      Tags:
+        - Key: Name
+          Value: !Sub private-rtb-1a-${EnvironmentName}
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName} Private Routes
+  
+  PrivateSubnetRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateVPCCondition
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  SAMLBackedPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref SAMLBackedPrivateSubnet
+
+  SageMakerDomainPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref SageMakerDomainPrivateSubnet
+
+######## VPC Endpoints ########
+  APIGatewayVPCE:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.execute-api"
+      PrivateDnsEnabled: true
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SubnetIds:
+        - !Ref SAMLBackedPrivateSubnet
+      VpcEndpointType: Interface
+      SecurityGroupIds:
+        - !GetAtt VPCESecurityGroup.GroupId
+        
+  SageMakerStudioVPCE:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      ServiceName: !Sub "aws.sagemaker.${AWS::Region}.studio"
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SubnetIds:
+        - !Ref SageMakerDomainPrivateSubnet
+      VpcEndpointType: Interface
+      SecurityGroupIds:
+        - !GetAtt VPCESecurityGroup.GroupId
+
+  SageMakerAPIVPCE:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sagemaker.api"
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SubnetIds:
+        - !Ref SageMakerDomainPrivateSubnet
+      VpcEndpointType: Interface
+      SecurityGroupIds:
+        - !GetAtt VPCESecurityGroup.GroupId
+
+  SageMakerRuntimeVPCE:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sagemaker.runtime"
+      VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
+      SubnetIds:
+        - !Ref SageMakerDomainPrivateSubnet
+      VpcEndpointType: Interface
+      SecurityGroupIds:
+        - !GetAtt VPCESecurityGroup.GroupId   
+

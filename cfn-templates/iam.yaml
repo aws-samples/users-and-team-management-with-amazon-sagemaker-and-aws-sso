@@ -1,0 +1,1088 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create environment-specific IAM Roles for SageMaker Data Science Environment Personas
+
+Parameters:
+  EnvName:
+    Type: String
+    AllowedPattern: '[a-z0-9\-]*'
+    Description: Please specify your data science environment name.  Used as a suffix for environment resource names.
+    Default: 'sagemaker-poc'
+
+  CreateVPCFlowLogsRole:
+    Description: Select YES if you want to create an IAM Role for VPC Flow Logs to write the logs into a CloudWatch log group
+    Type: String
+    AllowedValues:
+      - 'YES'
+      - 'NO'
+    Default: 'NO'
+
+  AmazonSageMakerServiceCatalogProductsLaunchRoleName:
+    Description: AmazonSageMakerServiceCatalogProductsLaunchRole Name
+    Type: String
+    Default: 'AmazonSageMakerServiceCatalogProductsLaunchRole'
+
+  AmazonSageMakerServiceCatalogProductsUseRoleName:
+    Description: AmazonSageMakerServiceCatalogProductsUseRole Name
+    Type: String
+    Default: 'AmazonSageMakerServiceCatalogProductsUseRole'
+  
+Conditions:
+  VPCFlowLogsRoleCondition: !Equals [!Ref CreateVPCFlowLogsRole, 'YES']
+  AmazonSageMakerServiceCatalogProductsLaunchRoleCondition:
+    !Not [ !Equals [ !Ref AmazonSageMakerServiceCatalogProductsLaunchRoleName, '' ] ]
+  AmazonSageMakerServiceCatalogProductsUseRoleCondition:
+    !Not [ !Equals [ !Ref AmazonSageMakerServiceCatalogProductsUseRoleName, ''] ] 
+
+Outputs:
+
+  SageMakerExecutionRoleArn:
+    Description: The ARN of the SageMaker execution role
+    Value: !GetAtt SageMakerExecutionRole.Arn
+
+  SageMakerPipelineExecutionRoleArn:
+    Description: The ARN of the SageMaker execution role
+    Value: !GetAtt SageMakerPipelineExecutionRole.Arn
+  
+  SetupLambdaExecutionRoleArn:
+    Description: Lambda execution role for Data Science environment setup function
+    Value: !GetAtt SetupLambdaExecutionRole.Arn
+    
+  VPCFlowLogsRoleArn:
+    Description: The ARN of the VPC Flow Logs role
+    Value: !If [ VPCFlowLogsRoleCondition, !GetAtt VPCFlowLogsRole.Arn, '' ]
+
+  AmazonSageMakerServiceCatalogProductsLaunchRoleArn:
+    Description: AmazonSageMakerServiceCatalogProductsLaunchRole ARN
+    Value: !If
+      - AmazonSageMakerServiceCatalogProductsLaunchRoleCondition
+      - !GetAtt AmazonSageMakerServiceCatalogProductsLaunchRole.Arn
+      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/AmazonSageMakerServiceCatalogProductsLaunchRole'
+
+  AmazonSageMakerServiceCatalogProductsUseRoleArn:
+    Description: AmazonSageMakerServiceCatalogProductsUseRole ARN
+    Value: !If
+      - AmazonSageMakerServiceCatalogProductsUseRoleCondition
+      - !GetAtt AmazonSageMakerServiceCatalogProductsUseRole.Arn
+      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'
+
+  
+Resources:
+
+  SageMakerPipelineExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Policy for SageMaker pipeline execution role
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Action:
+              - iam:PassRole
+            Resource:
+              - !GetAtt SageMakerExecutionRole.Arn
+            Effect: Allow
+          - 
+            Action:
+              - sagemaker:Create*
+              - sagemaker:Describe*
+              - sagemaker:Start*
+              - sagemaker:StopPipelineExecution
+              - sagemaker:UpdatePipeline
+              - sagemaker:UpdatePipelineExecution
+            Resource:
+              - !Sub 'arn:aws:sagemaker:*:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Action:
+              - 'sagemaker:List*'
+            Resource:
+              - '*'
+            Effect: Allow
+          - 
+            Action:
+              - s3:GetObject
+              - s3:HeadObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-data*'
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-data*/*'
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-models*'
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-models*/*'
+              - 'arn:aws:s3:::*sagemaker*/*'
+            Effect: Allow
+          - 
+            Action:
+              - ecr:SetRepositoryPolicy
+              - ecr:CompleteLayerUpload
+              - ecr:BatchDeleteImage
+              - ecr:UploadLayerPart
+              - ecr:DeleteRepositoryPolicy
+              - ecr:InitiateLayerUpload
+              - ecr:DeleteRepository
+              - ecr:PutImage
+            Resource: 'arn:aws:ecr:*:*:repository/*sagemaker*'
+            Effect: Allow
+          -
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:BatchGetImage
+              - ecr:CreateRepository
+              - ecr:Describe*
+              - ecr:GetAuthorizationToken
+              - ecr:GetDownloadUrlForLayer
+              - ecr:StartImageScan
+            Resource:
+              - 'arn:aws:ecr:*'
+            Effect: Allow
+
+  SageMakerPipelineExecutionRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - sagemaker.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+        Path: /
+        ManagedPolicyArns:
+          - !Ref SageMakerPipelineExecutionPolicy
+        Tags:
+          - Key: EnvironmentName
+            Value: !Ref EnvName
+          - Key: Principal
+            Value: !Sub '${EnvName}-sm-pipeline-role' #Need this tag for aws:ViaAWSService condition key for S3 bucket policies
+
+  SageMakerExecutionPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Action:
+              - 'ssm:GetParameters'
+              - 'ssm:GetParameter'
+            Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EnvName}*'
+            Effect: Allow
+          - 
+            Action:
+              - 'sagemaker:CreateNotebookInstance'
+              - 'sagemaker:CreateHyperParameterTuningJob'
+              - 'sagemaker:CreateProcessingJob'
+              - 'sagemaker:CreateTrainingJob'
+              - 'sagemaker:CreateCompilationJob'
+              - 'sagemaker:CreateModel'
+            Resource:
+              - !Sub 'arn:aws:sagemaker:*:${AWS::AccountId}:*'
+            Effect: Deny
+            Condition:
+              'Null':
+                'sagemaker:VpcSubnets': 'true'
+                'sagemaker:VpcSecurityGroupIds': 'true'
+          - 
+            Action:
+              - sagemaker:ListTags
+            Resource:
+              - !Sub 'arn:aws:sagemaker:*:${AWS::AccountId}:*'
+            Effect: Allow
+          - 
+            Action:
+              - 'codecommit:BatchGetRepositories'
+              - 'codecommit:GitPull'
+              - 'codecommit:GitPush'
+              - 'codecommit:CreateBranch'
+              - 'codecommit:DeleteBranch'
+              - 'codecommit:GetBranch'
+              - 'codecommit:CreatePullRequest'
+              - 'codecommit:GetPullRequest'
+              - 'codecommit:CreateCommit'
+              - 'codecommit:GetCommit'
+              - 'codecommit:GetCommitHistory'
+              - 'codecommit:GetDifferences'
+              - 'codecommit:GetReferences'
+              - 'codecommit:CreateRepository'
+              - 'codecommit:GetRepository'
+            Resource:
+              - !Sub 'arn:aws:codecommit:*:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Effect: Allow
+            Action:
+              - 'codecommit:List*'
+            Resource:
+              - '*'
+          - 
+            Action:
+              - 'kms:CreateGrant'
+              - 'kms:Decrypt'
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:ListAliases'
+            Resource:
+              - !Sub 'arn:aws:kms:*:${AWS::AccountId}:*'
+            Effect: Allow
+          -
+            Action:
+              -  s3:DescribeJob
+            Resource:
+              - '*'
+            Effect: Allow
+          -
+            Action:
+              - 's3:DeleteObject'
+              - 's3:DeleteBucket'
+            Resource:
+              - 'arn:aws:s3:::sm-mlops-cp-*'
+              - 'arn:aws:s3:::sm-mlops-cp-*/*'
+            Effect: Allow      
+          - 
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+              - 's3:HeadObject'
+              - 's3:GetBucketAcl'
+              - 's3:GetBucketCors'
+              - 's3:ListBucketMultipartUploads'
+              - 's3:PutBucketCors'
+              - 's3:GetObjectVersion'
+              - 's3:AbortMultipartUpload'
+            Resource:
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-data*'
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-data*/*'
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-models*'
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-models*/*'
+              - 'arn:aws:s3:::*sagemaker*/*'
+            Effect: Allow
+          - 
+            Action:
+              - 'cloudformation:DeleteStackInstances'
+              - 'cloudformation:DeleteStackSet'
+            Resource: 
+              - 'arn:aws:cloudformation:*:*:stackset/sagemaker-*'
+            Effect: Allow
+          - 
+            Action:
+              - 'cloudformation:List*'
+              - 'cloudformation:Describe*'
+            Resource: 
+              - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:*'
+            Effect: Allow
+          - 
+            Action:
+              - 'codepipeline:GetPipelineState'
+            Resource: 
+              - 'arn:aws:codepipeline:*:*:sagemaker-*'
+            Effect: Allow
+          - 
+            Action:
+              - 's3:GetBucketLocation'
+              - 's3:ListBucket'
+              - 's3:ListAllMyBuckets'
+            Resource:
+              - 'arn:aws:s3:::*'
+            Effect: Allow
+          - 
+            Action:
+              - glue:CreateTable
+              - glue:GetPartition
+              - glue:BatchCreatePartition
+            Resource:
+              - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:*'
+            Effect: Allow
+
+  SageMakerExecutionRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - sagemaker.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+        Path: /
+        ManagedPolicyArns:
+          - !Ref SageMakerExecutionPolicy
+          - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+          - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+          - 'arn:aws:iam::aws:policy/AmazonSageMakerFeatureStoreAccess'
+        Tags:
+          - Key: EnvironmentName
+            Value: !Ref EnvName
+          - Key: Principal
+            Value: !Sub '${EnvName}-sm-execution-role'  #Need this tag for aws:ViaAWSService condition key for S3 bucket policies
+
+  VPCFlowLogsRole:
+    Type: 'AWS::IAM::Role'
+    Condition: VPCFlowLogsRoleCondition
+    Properties:
+      Description: Rights to Publish VPC Flow Logs to CloudWatch Logs
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - vpc-flow-logs.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CloudWatchLogGroup
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/vpcflowlogs/${EnvName}*' 
+      Tags:
+      - Key: EnvironmentName
+        Value: !Ref EnvName
+
+  SetupLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Ref SetupLambdaExecutionPolicy
+        - 'arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Tags:
+      - Key: EnvironmentName
+        Value: !Ref EnvName
+
+  SetupLambdaExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: SageMakerDomainPermission
+            Effect: Allow
+            Action:
+              - sagemaker:ListDomains
+              - sagemaker:CreateDomain
+              - sagemaker:DescribeDomain
+              - sagemaker:DeleteDomain
+              - sagemaker:UpdateDomain
+              - sagemaker:ListUserProfiles
+              - sagemaker:CreateUserProfile
+              - sagemaker:UpdateUserProfile
+              - sagemaker:DeleteUserProfile
+              - sagemaker:DescribeUserProfile
+              - sagemaker:ListApps
+              - sagemaker:CreateApp
+              - sagemaker:DescribeApp
+              - sagemaker:DeleteApp
+              - sagemaker:UpdateApp
+            Resource:
+              - !Sub "arn:${AWS::Partition}:sagemaker:*:*:domain/*"
+              - !Sub "arn:${AWS::Partition}:sagemaker:*:*:user-profile/*"
+              - !Sub "arn:${AWS::Partition}:sagemaker:*:*:app/*"
+          - Sid: SCPermissions
+            Effect: Allow
+            Action:
+              - servicecatalog:Accept*
+              - servicecatalog:Associate*
+              - servicecatalog:Create*
+              - servicecatalog:Delete*
+              - servicecatalog:Describe*
+              - servicecatalog:Disassociate*
+              - servicecatalog:Enable*
+              - servicecatalog:Execute*
+              - servicecatalog:Get*
+              - servicecatalog:List*
+              - servicecatalog:Provision*
+              - servicecatalog:Scan*
+              - servicecatalog:Terminate*
+              - servicecatalog:Update*
+              - servicecatalog:Search*
+            Resource:
+              - !Sub 'arn:aws:servicecatalog:*:${AWS::AccountId}:*'
+              - !Sub 'arn:aws:catalog:*:${AWS::AccountId}:*'
+          - # Authorization strategy is ActionOnly for these two operations and require * in resource field
+            Sid: SageMakerEnableSCPortfolio
+            Effect: Allow
+            Action:
+              - sagemaker:EnableSagemakerServicecatalogPortfolio
+              - sagemaker:DisableSagemakerServicecatalogPortfolio
+            Resource:
+              - '*'
+          - Sid: AWSOrganizationsPermission
+            Effect: Allow
+            Action:
+              - organizations:List*
+              - organizations:DescribeOrganizationalUnit
+            Resource: 'arn:aws:organizations::*:ou/o-*/ou-*'
+          - Sid: SageMakerExecPassRole
+            Effect: Allow
+            Action:
+              - iam:PassRole
+              - iam:GetRole
+            Resource: !GetAtt SageMakerExecutionRole.Arn
+          - Sid: AssumeTargetAccountRole
+            Action:
+              - sts:AssumeRole
+            Resource:
+              - 'arn:*:iam::*:role/*StackSetExecutionRole*'
+            Effect: Allow
+          - Sid: BucketPolicyPermission
+            Action:
+              - 's3:GetBucketPolicy'
+              - 's3:PutBucketPolicy'
+            Resource:
+              - !Sub 'arn:aws:s3:::${EnvName}-${AWS::Region}-models*'
+            Effect: Allow
+          - Sid: KMSPolicyPermission
+            Action:
+              - 'kms:GetKeyPolicy'
+              - 'kms:PutKeyPolicy'
+            Resource: 
+              - !Sub 'arn:aws:kms:*:${AWS::AccountId}:*'
+            Effect: Allow
+          - Sid: SSMReadPermission 
+            Action:
+              - 'ssm:GetParameters'
+              - 'ssm:GetParameter'
+            Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EnvName}*'
+            Effect: Allow 
+
+ ### Roles for Sagemaker projects
+  AmazonSageMakerServiceCatalogProductsLaunchRole:
+    Type: "AWS::IAM::Role"
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Condition: AmazonSageMakerServiceCatalogProductsLaunchRoleCondition
+    Properties:
+      RoleName: !Ref AmazonSageMakerServiceCatalogProductsLaunchRoleName
+      Description: "his role has the permissions required to launch the Amazon SageMaker portfolio of products from AWS ServiceCatalog."
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: 
+                - servicecatalog.amazonaws.com
+                - codepipeline.amazonaws.com
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/service-role/"
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess'
+      Policies: 
+        - PolicyName: AmazonSageMakerServiceCatalogProductsLaunchRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'apigateway:GET'
+                  - 'apigateway:POST'
+                  - 'apigateway:PUT'
+                  - 'apigateway:PATCH'
+                  - 'apigateway:DELETE'
+                Resource: 
+                  - '*'
+                Condition:
+                  StringLike:
+                    'aws:ResourceTag/sagemaker:launch-source': '*'
+              - Effect: Allow
+                Action:
+                  - 'apigateway:POST'
+                Resource:
+                  - '*'
+                Condition:
+                  'ForAnyValue:StringLike':
+                    'aws:TagKeys':
+                      - 'sagemaker:launch-source'
+              - Effect: Allow
+                Action:
+                  - 'apigateway:PATCH'
+                Resource:
+                  - 'arn:aws:apigateway:*::/account'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:DeleteStack'
+                Resource: 'arn:aws:cloudformation:*:*:stack/SC-*'
+                Condition:
+                  ArnLikeIfExists:
+                    'cloudformation:RoleArn':
+                      - 'arn:aws:sts::*:assumed-role/AmazonSageMakerServiceCatalog*'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:DescribeStackEvents'
+                  - 'cloudformation:DescribeStacks'
+                Resource: 'arn:aws:cloudformation:*:*:stack/SC-*'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:GetTemplateSummary'
+                  - 'cloudformation:ValidateTemplate'
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - 'codebuild:CreateProject'
+                  - 'codebuild:DeleteProject'
+                  - 'codebuild:UpdateProject'
+                  - 'codebuild:TagResource'
+                Resource:
+                  - 'arn:aws:codebuild:*:*:project/sagemaker-*'
+              - Effect: Allow
+                Action:
+                  - 'codecommit:CreateCommit'
+                  - 'codecommit:CreateRepository'
+                  - 'codecommit:DeleteRepository'
+                  - 'codecommit:GetRepository'
+                  - 'codecommit:TagResource'
+                Resource:
+                  - 'arn:aws:codecommit:*:*:sagemaker-*'
+              - Effect: Allow
+                Action:
+                  - 'codecommit:ListRepositories'
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - 'codepipeline:CreatePipeline'
+                  - 'codepipeline:DeletePipeline'
+                  - 'codepipeline:GetPipeline'
+                  - 'codepipeline:GetPipelineState'
+                  - 'codepipeline:StartPipelineExecution'
+                  - 'codepipeline:TagResource'
+                  - 'codepipeline:UpdatePipeline'
+                Resource:
+                  - 'arn:aws:codepipeline:*:*:sagemaker-*'
+              - Effect: Allow
+                Action:
+                  - 'cognito-idp:CreateUserPool'
+                Resource:
+                  - '*'
+                Condition:
+                  'ForAnyValue:StringLike':
+                    'aws:TagKeys':
+                      - 'sagemaker:launch-source'
+              - Effect: Allow
+                Action:
+                  - 'cognito-idp:CreateGroup'
+                  - 'cognito-idp:CreateUserPoolDomain'
+                  - 'cognito-idp:CreateUserPoolClient'
+                  - 'cognito-idp:DeleteGroup'
+                  - 'cognito-idp:DeleteUserPool'
+                  - 'cognito-idp:DeleteUserPoolClient'
+                  - 'cognito-idp:DeleteUserPoolDomain'
+                  - 'cognito-idp:DescribeUserPool'
+                  - 'cognito-idp:DescribeUserPoolClient'
+                  - 'cognito-idp:UpdateUserPool'
+                  - 'cognito-idp:UpdateUserPoolClient'
+                Resource:
+                  - '*'
+                Condition:
+                  StringLike:
+                    'aws:ResourceTag/sagemaker:launch-source': '*'
+              - Action:
+                  - 'ecr:CreateRepository'
+                  - 'ecr:DeleteRepository'
+                Resource:
+                  - 'arn:aws:ecr:*:*:repository/sagemaker-*'
+                Effect: Allow
+              - Effect: Allow
+                Action:
+                  - 'events:DescribeRule'
+                  - 'events:DeleteRule'
+                  - 'events:DisableRule'
+                  - 'events:EnableRule'
+                  - 'events:PutRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource:
+                  - 'arn:aws:events:*:*:rule/sagemaker-*'
+              - Effect: Allow
+                Action:
+                  - 'firehose:CreateDeliveryStream'
+                  - 'firehose:DeleteDeliveryStream'
+                  - 'firehose:DescribeDeliveryStream'
+                  - 'firehose:StartDeliveryStreamEncryption'
+                  - 'firehose:StopDeliveryStreamEncryption'
+                  - 'firehose:UpdateDestination'
+                Resource: 
+                  - 'arn:aws:firehose:*:*:deliverystream/sagemaker-*'
+              - Action:
+                  - 'glue:CreateDatabase'
+                  - 'glue:DeleteDatabase'
+                Resource:
+                  - 'arn:aws:glue:*:*:catalog'
+                  - 'arn:aws:glue:*:*:database/sagemaker-*'
+                  - 'arn:aws:glue:*:*:table/sagemaker-*'
+                  - 'arn:aws:glue:*:*:userDefinedFunction/sagemaker-*'
+                Effect: Allow
+              - Action:
+                  - 'glue:CreateClassifier'
+                  - 'glue:DeleteClassifier'
+                  - 'glue:DeleteCrawler'
+                  - 'glue:DeleteJob'
+                  - 'glue:DeleteTrigger'
+                  - 'glue:DeleteWorkflow'
+                  - 'glue:StopCrawler'
+                Resource:
+                  - !Sub 'arn:aws:glue:*:${AWS::AccountId}:*'
+                Effect: Allow
+              - Action:
+                  - 'glue:CreateWorkflow'
+                Resource:
+                  - 'arn:aws:glue:*:*:workflow/sagemaker-*'
+                Effect: Allow
+              - Action:
+                  - 'glue:CreateJob'
+                Resource:
+                  - 'arn:aws:glue:*:*:job/sagemaker-*'
+                Effect: Allow
+              - Action:
+                  - 'glue:CreateCrawler'
+                  - 'glue:GetCrawler'
+                Resource:
+                  - 'arn:aws:glue:*:*:crawler/sagemaker-*'
+                Effect: Allow
+              - Action:
+                  - 'glue:CreateTrigger'
+                  - 'glue:GetTrigger'
+                Resource:
+                  - 'arn:aws:glue:*:*:trigger/sagemaker-*'
+                Effect: Allow
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/service-role/AmazonSageMakerServiceCatalog*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*SageMakerExecutionRole*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:CreateFunction'
+                  - 'lambda:DeleteFunction'
+                  - 'lambda:GetFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:RemovePermission'
+                  - 'lambda:PutFunctionConcurrency'
+                Resource:
+                  - !Sub 'arn:aws:lambda:*:${AWS::AccountId}:function:*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DeleteLogGroup'
+                  - 'logs:DeleteLogStream'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutRetentionPolicy'
+                Resource:
+                  - 'arn:aws:logs:*:*:log-group:/aws/apigateway/AccessLogs/*'
+                  - 'arn:aws:logs:*:*:log-group::log-stream:*'
+              - Effect: Allow
+                Action: 's3:GetObject'
+                Resource: 
+                  - 'arn:aws:s3:::*'
+                Condition:
+                  StringEquals:
+                    's3:ExistingObjectTag/servicecatalog:provisioning': 'true'
+              - Effect: Allow
+                Action: 's3:GetObject'
+                Resource:
+                  - 'arn:aws:s3:::sagemaker-*'
+                  - 'arn:aws:s3:::sm-mlops-cp-*'
+              - Effect: Allow
+                Action:
+                  - 's3:CreateBucket'
+                  - 's3:DeleteBucket'
+                  - 's3:DeleteBucketPolicy'
+                  - 's3:GetBucketPolicy'
+                  - 's3:PutBucketAcl'
+                  - 's3:PutBucketNotification'
+                  - 's3:PutBucketPolicy'
+                  - 's3:PutBucketPublicAccessBlock'
+                  - 's3:PutBucketLogging'
+                  - 's3:PutEncryptionConfiguration'
+                  - 's3:PutBucketTagging'
+                Resource: 
+                  - 'arn:aws:s3:::sagemaker-*'
+                  - 'arn:aws:s3:::sm-mlops-cp-*'
+              - Action:
+                  - 'sagemaker:CreateEndpoint'
+                  - 'sagemaker:CreateEndpointConfig'
+                  - 'sagemaker:CreateModel'
+                  - 'sagemaker:CreateWorkteam'
+                  - 'sagemaker:DeleteEndpoint'
+                  - 'sagemaker:DeleteEndpointConfig'
+                  - 'sagemaker:DeleteModel'
+                  - 'sagemaker:DeleteWorkteam'
+                  - 'sagemaker:Describe*'
+                Resource:
+                  - 'arn:aws:sagemaker:*:*:*'
+                Effect: Allow
+              - Action:
+                  - 'sagemaker:List*'
+                Resource:
+                  - '*'
+                Effect: Allow
+              - Action:
+                  - 'states:CreateStateMachine'
+                  - 'states:DeleteStateMachine'
+                  - 'states:UpdateStateMachine'
+                Resource:
+                  - 'arn:aws:states:*:*:stateMachine:sagemaker-*'
+                Effect: Allow
+              - Action:
+                  - 'ssm:GetParameters'
+                  - 'ssm:GetParameter'
+                Resource: !Sub 'arn:aws:ssm:*:${AWS::AccountId}:parameter/*'
+                Effect: Allow
+ 
+  AmazonSageMakerServiceCatalogProductsUseRole:
+    Type: "AWS::IAM::Role"
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Condition: AmazonSageMakerServiceCatalogProductsUseRoleCondition
+    Properties:
+      RoleName: !Ref AmazonSageMakerServiceCatalogProductsUseRoleName
+      Description: "This role has the permissions required to use the Amazon SageMaker portfolio of products from AWS ServiceCatalog."
+      Path: "/service-role/"
+      MaxSessionDuration: 3600 
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "cloudformation.amazonaws.com"
+                - "apigateway.amazonaws.com"
+                - "lambda.amazonaws.com"
+                - "codebuild.amazonaws.com"
+                - "sagemaker.amazonaws.com"
+                - "glue.amazonaws.com"
+                - "events.amazonaws.com"
+                - "states.amazonaws.com"
+                - "codepipeline.amazonaws.com"
+                - "firehose.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies: 
+        - PolicyName: AmazonSageMakerServiceCatalogProductsUseRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - sts:AssumeRole
+                Resource:
+                  - 'arn:aws:iam::*:role/*SageMakerModelExecution*'
+                Effect: Allow
+              - 
+                Action:
+                  - cloudformation:Delete*
+                  - cloudformation:Get*
+                  - cloudformation:Create*
+                  - cloudformation:Update*
+                  - cloudformation:List*
+                  - cloudformation:Describe*
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                Resource: 
+                  - arn:aws:cloudformation:*:*:stack/sagemaker-*
+                  - arn:aws:cloudformation:*:*:stackset/sagemaker-*
+                  - arn:aws:cloudformation:*:*:type/resource/*
+                  - arn:aws:cloudformation:*:*:stackset-target/sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:TagResource
+                Resource: 
+                  - '*'
+                Effect: Allow
+              - 
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: 
+                  - !Sub 'arn:aws:cloudwatch:*:${AWS::AccountId}:*'
+                Effect: Allow
+              - 
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource:
+                  - arn:aws:codebuild:*:*:project/sagemaker-*
+                  - arn:aws:codebuild:*:*:build/sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - codebuild:ListCuratedEnvironmentImages
+                Resource: 
+                  - '*'
+                Effect: Allow
+              -
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Resource: !Sub 'arn:aws:codebuild:*:${AWS::AccountId}:report-group/sagemaker*'
+                Effect: Allow
+              - 
+                Action:
+                  - codecommit:CancelUploadArchive
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:UploadArchive
+                Resource: arn:aws:codecommit:*:*:sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - codepipeline:StartPipelineExecution
+                Resource: arn:aws:codepipeline:*:*:sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DeleteNetworkInterface
+                Resource: 
+                  - !Sub 'arn:aws:ec2:*:${AWS::AccountId}:*'
+                Effect: Allow
+              - 
+                Action:
+                  - ec2:CreateNetworkInterfacePermission
+                Resource: !Sub "arn:aws:ec2:*:${AWS::AccountId}:network-interface/*"
+                Effect: Allow
+              - 
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:Describe*
+                  - ecr:ListImages
+                  - ecr:GetAuthorizationToken
+                  - ecr:GetDownloadUrlForLayer
+                Resource: 
+                  - '*'
+                Effect: Allow
+              - 
+                Effect: Allow
+                Action:
+                  - ecr:BatchDeleteImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:CreateRepository
+                  - ecr:DeleteRepository
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource:
+                  - arn:aws:ecr:*:*:repository/sagemaker-*
+              - 
+                Action:
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:PutRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                Resource:
+                  - arn:aws:events:*:*:rule/sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                Resource: arn:aws:firehose:*:*:deliverystream/sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - glue:BatchCreatePartition
+                  - glue:BatchDeletePartition
+                  - glue:BatchDeleteTable
+                  - glue:BatchDeleteTableVersion
+                  - glue:BatchGetPartition
+                  - glue:CreateDatabase
+                  - glue:CreatePartition
+                  - glue:CreateTable
+                  - glue:DeletePartition
+                  - glue:DeleteTable
+                  - glue:DeleteTableVersion
+                  - glue:GetDatabase
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:GetTableVersion
+                  - glue:GetTableVersions
+                  - glue:SearchTables
+                  - glue:UpdatePartition
+                  - glue:UpdateTable
+                Resource:
+                  - arn:aws:glue:*:*:catalog
+                  - arn:aws:glue:*:*:database/default
+                  - arn:aws:glue:*:*:database/global_temp
+                  - arn:aws:glue:*:*:database/sagemaker-*
+                  - arn:aws:glue:*:*:table/sagemaker-*
+                  - arn:aws:glue:*:*:tableVersion/sagemaker-*
+                Effect: Allow
+              - 
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - arn:aws:iam::*:role/service-role/AmazonSageMakerServiceCatalog*
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*SageMakerExecutionRole*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*SageMakerPipeline*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*StackSetAdministration*'
+                Effect: Allow
+              - 
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - arn:aws:lambda:*:*:function:sagemaker-*
+              - 
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DeleteLogDelivery
+                  - logs:Describe*
+                  - logs:GetLogDelivery
+                  - logs:GetLogEvents
+                  - logs:ListLogDeliveries
+                  - logs:PutLogEvents
+                  - logs:PutResourcePolicy
+                  - logs:UpdateLogDelivery
+                Resource:
+                  - !Sub 'arn:aws:logs:*:${AWS::AccountId}:*'
+                Effect: Allow
+              - 
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:GetBucketAcl
+                  - s3:GetBucketCors
+                  - s3:GetBucketLocation
+                  - s3:ListAllMyBuckets
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutBucketCors
+                  - s3:AbortMultipartUpload
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource:
+                  - 'arn:aws:s3:::aws-glue-*'
+                  - 'arn:aws:s3:::sagemaker-*'
+                  - 'arn:aws:s3:::sm-mlops-cp-*'
+                  - 'arn:aws:s3:::*-data*'
+                  - 'arn:aws:s3:::*-data*/*'
+                  - 'arn:aws:s3:::*-models*'
+                  - 'arn:aws:s3:::*-models*/*'
+              - 
+                Effect: Allow
+                Action:
+                  - 'sagemaker:Create*'
+                  - 'sagemaker:Delete*'
+                  - 'sagemaker:Describe*'
+                  - 'sagemaker:Start*'
+                  - 'sagemaker:Stop*'
+                  - 'sagemaker:Update*'
+                  - 'sagemaker:Search*'
+                  - 'sagemaker:Add*'
+                  - 'sagemaker:Associate*'
+                  - 'sagemaker:Disassociate*'
+                  - 'sagemaker:Register*'
+                  - 'sagemaker:Send*'
+                  - 'sagemaker:Put*'
+                  - 'sagemaker:Get*'
+                  - 'sagemaker:Batch*'
+                NotResource:
+                  - arn:aws:sagemaker:*:*:domain/*
+                  - arn:aws:sagemaker:*:*:user-profile/*
+                  - arn:aws:sagemaker:*:*:app/*
+                  - arn:aws:sagemaker:*:*:flow-definition/*
+              - 
+                Action:
+                  - 'sagemaker:List*'
+                Resource:
+                  - '*'
+                Effect: Allow
+              - 
+                Effect: Allow
+                Action:
+                  - sagemaker:Describe*
+                  - sagemaker:ListTags
+                Resource:
+                  - arn:aws:sagemaker:*:*:domain/*
+              - 
+                Action:
+                  - states:DescribeExecution
+                  - states:DescribeStateMachine
+                  - states:DescribeStateMachineForExecution
+                  - states:GetExecutionHistory
+                  - states:ListExecutions
+                  - states:ListTagsForResource
+                  - states:StartExecution
+                  - states:StopExecution
+                  - states:TagResource
+                  - states:UntagResource
+                  - states:UpdateStateMachine
+                Resource:
+                  - arn:aws:states:*:*:stateMachine:sagemaker-*
+                  - arn:aws:states:*:*:execution:sagemaker-*:*
+                Effect: Allow
+              - 
+                Action:
+                  - states:ListStateMachines
+                Resource:
+                  - '*'
+                Effect: Allow
+              - 
+                Action:
+                  - 'kms:CreateGrant'
+                  - 'kms:Decrypt'
+                  - 'kms:DescribeKey'
+                  - 'kms:Encrypt'
+                  - 'kms:GenerateDataKey'
+                  - 'kms:ListAliases'
+                Resource: 
+                  - '*'
+                Effect: Allow
+              - 
+                Action:
+                  - 'ssm:GetParameter*'
+                Resource: !Sub 'arn:aws:ssm:*:${AWS::AccountId}:parameter/*'
+                Effect: Allow
+ 

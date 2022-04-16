@@ -1,0 +1,150 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Amazon SageMaker SAML backend. This stack creates a SAML backend API and Lambda functions to suppport a custom SAML application
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: amazon-sagemaker-saml-backend
+    Description: Custom SAML application backend for Amazon SageMaker Studio
+    Author: ilyiny
+    SpdxLicenseId: MIT
+    LicenseUrl: ./LICENSE
+    ReadmeUrl: ./README.md
+    Labels: ['amazon', 'sagemaker', 'studio', 'saml', 'sso']
+    HomePageUrl: https://gitlab.aws.dev/ilyiny/amazon-sagemaker-team-and-user-management-sso
+    SemanticVersion: 1.0.0
+    SourceCodeUrl: https://gitlab.aws.dev/ilyiny/amazon-sagemaker-team-and-user-management-sso
+
+Globals:
+  Function:
+    Runtime: python3.8
+    MemorySize: 128
+    Timeout: 60
+    Tags:
+      Project: amazon-sagemaker-saml-backend
+
+Outputs:
+  SageMakerDomainId:
+    Description: SageMaker Domain Id
+    Value: !If 
+      - CreateSageMakerDomainCondition
+      - !GetAtt SageMakerStudioDomain.DomainId
+      - !Ref SageMakerDomainId
+    Export:
+      Name: 'sagemaker-domain-id'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    AllowedPattern: '[a-z0-9\-]*'
+    Default: 'sagemaker-team-mgmt-sso'
+    Description: Your Amazon SageMaker environment name
+
+  SageMakerDomainId:
+    Type: String
+    AllowedPattern: '[a-z0-9\-]*'
+    Default: ''
+    Description: Existing Amazon SageMaker domain id. Leave empty to create a new domain.
+
+  SageMakerVPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose a VPC for SageMaker Studio
+  
+  SageMakerStudioSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Choose subnets or provide a comma-delimited list of subnet ids
+
+  SageMakerSecurityGroupIds:
+    Type: String
+    Description: Choose security groups for SageMaker Studio and SageMaker workloads
+    Default: ''
+
+Conditions:
+  CreateSageMakerDomainCondition: !Equals [ !Ref SageMakerDomainId, '' ]
+
+Resources:
+  
+######## CF Stacks ########
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties: 
+      TemplateURL: cfn-templates/vpc.yaml
+      Parameters:
+        EnvironmentName : !Ref EnvironmentName
+        NetworkVpc: !Ref NetworkVpcCidr
+        NetworkPrivateSubnet: !Ref NetworkPrivateSubnetCidr
+        NetworkPrivateSubnetSageMaker: !Ref NetworkPrivateSubnetSageMakerCidr
+        NetworkPublicSubnet: !Ref NetworkPublicSubnetCidr
+        PublicIp: !Ref PublicIpCidr
+      Tags: 
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+      
+  IAM:
+    Type: AWS::CloudFormation::Stack
+    Properties: 
+      TemplateURL: cfn-templates/iam.yaml
+      Parameters:
+        EnvironmentName : !Ref EnvironmentName
+        NetworkPrivateSubnet: !Ref NetworkPrivateSubnetCidr
+      Tags: 
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+      
+  SageMakerStudioDomain:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateSageMakerDomainCondition
+    Properties: 
+      TemplateURL: cfn-templates/sagemaker-domain.yaml    
+      Parameters: 
+        EnvName : !Ref EnvironmentName
+        VPCId : !Ref SageMakerVPCId
+        SageMakerStudioSubnetIds : !Ref SageMakerStudioSubnetIds
+        SageMakerSecurityGroupIds: !Ref SageMakerSecurityGroupIds
+        SageMakerDefaultExecutionRoleArn: !GetAtt IAM.Outputs.SageMakerDefaultExecutionRoleArn
+        SetupLambdaExecutionRoleArn: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
+      Tags: 
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+
+
+######## API Gateway ########
+  SageMakerDomainSSOAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      EndpointConfiguration:
+        Type: Private
+        VpcEndpointIds: 
+          - !GetAtt VPCStack.Outputs.APIGatewayVpcEndpoint   
+
+######## Lambda Functions ########
+  SAMLBackEndFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      ReservedConcurrentExecutions: 1
+      CodeUri: functions/saml-backend/
+      Role: !GetAtt IAM.Outputs.SAMLBackEndLambdaExecutionRoleArn
+      Handler: index.handler
+      Runtime: nodejs14.x
+      Events:
+        SAMLBackEnd:
+          Type: Api
+          Properties:
+            Auth: 
+              ResourcePolicy:
+                IntrinsicVpceWhitelist:
+                  - !GetAtt VPCStack.Outputs.APIGatewayVpcEndpoint
+            Path: /saml
+            Method: POST
+            RestApiId: !Ref SageMakerDomainSSOAPI
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SageMakerSecurityGroupIds
+        SubnetIds:
+          - !Ref SageMakerStudioSubnetIds
+
