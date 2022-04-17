@@ -95,7 +95,7 @@ Parameters:
       - 'PublicInternetOnly'
       - 'VpcOnly'
     Description: Choose how SageMaker Studio accesses resources over the Network
-    Default: 'PublicInternetOnly'
+    Default: 'VpcOnly'
 
   AuthMode:
     Type: String
