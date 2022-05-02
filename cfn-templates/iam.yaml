@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 AWSTemplateFormatVersion: 2010-09-09
-Description: Create IAM Roles for SageMaker user profiles and Lambda SAML functions
+Description: Create IAM Roles for SageMaker user profiles and SAML backend Lambda function
 
 Outputs:
 
@@ -11,19 +11,19 @@ Outputs:
     Value: !GetAtt SageMakerDefaultExecutionRole.Arn
 
   SageMakerTeam1ExecutionRoleArn:
-    Description: The ARN of the SageMaker default execution role
+    Description: The ARN of the SageMaker Team1 execution role
     Value: !GetAtt SageMakerTeam1ExecutionRole.Arn
   
   SageMakerTeam2ExecutionRoleArn:
-    Description: The ARN of the SageMaker default execution role
+    Description: The ARN of the SageMaker Team2 execution role
     Value: !GetAtt SageMakerTeam2ExecutionRole.Arn
 
   SetupLambdaExecutionRoleArn:
-    Description: Lambda execution role for Data Science environment setup function
+    Description: Lambda execution role for stack setup Lambda function
     Value: !GetAtt SetupLambdaExecutionRole.Arn
     
   SAMLBackendLambdaExecutionRoleArn:
-    Description: Lambda execution role for Data Science environment setup function
+    Description: Lambda execution role for SAML backend Lambda function
     Value: !GetAtt SAMLBackendLambdaExecutionRole.Arn
 
 Parameters:
@@ -77,13 +77,13 @@ Resources:
               - ec2:DescribeVpcEndpoints
               - ec2:DescribeVpcs
             Resource:
-              - '*'
+              - !Sub 'arn:aws:ec2:*:${AWS::AccountId}:*'
             Effect: Allow
           - Sid: AmazonSageMakerIAMReadOnlyPolicy
             Action:
               - iam:ListRoles
             Resource:
-              - '*'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:*'
             Effect: Allow
 
   SageMakerAccessSupportingServicesPolicy:
@@ -115,7 +115,7 @@ Resources:
               - kms:DescribeKey
               - kms:ListAliases
             Resource:
-              - '*'
+              - !Sub 'arn:aws:kms:*:${AWS::AccountId}:*'
             Effect: Allow
           - Sid: AmazonSageMakerCRUDAccessECRPolicy
             Action:
@@ -297,7 +297,7 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Policies:
-        - PolicyName: RestrictSageMakertoInternalIP
+        - PolicyName: RestrictSageMakerToCIDR
           PolicyDocument:
             Version: '2012-10-17'
             Statement:

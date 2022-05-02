@@ -11,7 +11,7 @@ Metadata:
       - Label: 
           default: Data Science Environment
         Parameters:
-          - EnvName
+          - EnvironmentName
       - Label:
           default: Amazon SageMaker Studio
         Parameters: 
@@ -21,9 +21,9 @@ Metadata:
           default: Network and Storage Configuration
         Parameters:
           - VPCId
-          - SageMakerStudioSubnetIds
+          - SageMakerDomainSubnetIds
           - SageMakerSecurityGroupIds
-          - SageMakerStudioStorageKMSKeyId
+          - SageMakerDomainStorageKMSKeyId
       - Label:
           default: Permissions
         Parameters:
@@ -31,7 +31,7 @@ Metadata:
           - SetupLambdaExecutionRoleArn
 
     ParameterLabels:
-      EnvName:
+      EnvironmentName:
         default: Environment name
       DomainName:
         default: Domain name
@@ -39,11 +39,11 @@ Metadata:
         default: Authentication mode
       VPCId:
         default: VPC
-      SageMakerStudioSubnetIds:
+      SageMakerDomainSubnetIds:
         default: Subnet(s)
       SageMakerSecurityGroupIds:
         default: Security group(s)
-      SageMakerStudioStorageKMSKeyId:
+      SageMakerDomainStorageKMSKeyId:
         default: Storage encryption key
       NetworkAccessType:
         default: Network access for SageMaker Studio
@@ -60,11 +60,11 @@ Outputs:
       Name: 'ds-sagemaker-domain-id'
 
 Parameters:
-  EnvName:
+  EnvironmentName:
     Type: String
     AllowedPattern: '[a-z0-9\-]*'
     Description: Please specify your SageMaker environment name.
-    Default: 'sagemaker-domain'
+    Default: 'sm-environment'
 
   DomainName:
     Type: String
@@ -75,7 +75,7 @@ Parameters:
     Type: AWS::EC2::VPC::Id
     Description: Choose a VPC for SageMaker Studio and SageMaker workloads
 
-  SageMakerStudioSubnetIds:
+  SageMakerDomainSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Choose subnets or provide a comma-delimited list of subnet ids
 
@@ -84,7 +84,7 @@ Parameters:
     Description: Choose security groups for SageMaker Studio and SageMaker workloads
     Default: ''
 
-  SageMakerStudioStorageKMSKeyId:
+  SageMakerDomainStorageKMSKeyId:
     Type: String
     Description: SageMaker uses an AWS managed CMK to encrypt your EFS and EBS file systems by default. To use a customer managed CMK, enter its key Id.
     Default: ''
@@ -101,8 +101,7 @@ Parameters:
     Type: String
     AllowedValues:
       - 'IAM'
-      - 'SSO'
-    Description: The mode of authentication that members use to access the domain
+    Description: The mode of authentication that members use to access the domain. Only IAM is supported for this solution.
     Default: 'IAM'
 
   SageMakerDefaultExecutionRoleArn:
@@ -115,7 +114,7 @@ Parameters:
 
 Conditions:
   GenerateDomainNameCondition: !Equals [ !Ref DomainName, '' ]
-  SageMakerEFSKMSKeyCondition: !Not [ !Equals [ !Ref SageMakerStudioStorageKMSKeyId, ''] ]
+  SageMakerEFSKMSKeyCondition: !Not [ !Equals [ !Ref SageMakerDomainStorageKMSKeyId, ''] ]
   SMSecurityGroupIdsCondition: !Not [ !Equals [ !Ref SageMakerSecurityGroupIds, '' ] ]
 
 Rules:
@@ -139,14 +138,14 @@ Resources:
             - !Ref 'AWS::NoValue'  
       DomainName: !If
         - GenerateDomainNameCondition
-        - !Sub '${EnvName}-${AWS::Region}-sagemaker-domain'
+        - !Sub '${EnvironmentName}-${AWS::Region}-sagemaker-domain'
         - !Ref DomainName 
-      KmsKeyId: !If [ SageMakerEFSKMSKeyCondition, !Ref SageMakerStudioStorageKMSKeyId, !Ref 'AWS::NoValue' ]
-      SubnetIds: !Ref SageMakerStudioSubnetIds
+      KmsKeyId: !If [ SageMakerEFSKMSKeyCondition, !Ref SageMakerDomainStorageKMSKeyId, !Ref 'AWS::NoValue' ]
+      SubnetIds: !Ref SageMakerDomainSubnetIds
       VpcId: !Ref VPCId
       Tags:
         - Key: EnvironmentName
-          Value: !Ref EnvName
+          Value: !Ref EnvironmentName
 
   EnableSageMakerProjects:
     Type: Custom::ResourceForEnablingSageMakerProjects
@@ -229,7 +228,7 @@ Resources:
       Timeout: 900
       Tags:
         - Key: EnvironmentName
-          Value: !Ref EnvName
+          Value: !Ref EnvironmentName
 
   EnableSageMakerProjectsLambda:
     Type: AWS::Lambda::Function
@@ -284,13 +283,13 @@ Resources:
       Timeout: 60
       Tags:
         - Key: EnvironmentName
-          Value: !Ref EnvName
+          Value: !Ref EnvironmentName
 
   # SSM parameter
   SageMakerDomainIdSSM:
     Type: 'AWS::SSM::Parameter'
     Properties:
-      Name: !Sub "${EnvName}-sagemaker-domain-id"
+      Name: !Sub "${EnvironmentName}-sagemaker-domain-id"
       Type: String
       Value: !GetAtt SageMakerStudioDomain.DomainId
       Description: !Sub 'SageMaker Studio domain id for ${SageMakerStudioDomain.DomainArn}'

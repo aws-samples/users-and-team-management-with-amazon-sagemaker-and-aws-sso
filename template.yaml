@@ -32,7 +32,7 @@ Outputs:
     Description: SageMaker Domain Id
     Value: !If 
       - CreateSageMakerDomainCondition
-      - !GetAtt SageMakerStudioDomain.DomainId
+      - !GetAtt SageMakerDomain.SageMakerDomainId
       - !Ref SageMakerDomainId
     Export:
       Name: 'sagemaker-domain-id'
@@ -50,20 +50,63 @@ Parameters:
     Default: ''
     Description: Existing Amazon SageMaker domain id. Leave empty to create a new domain.
 
+  CreatePrivateSubnets:
+    AllowedValues:
+      - 'YES'
+      - 'NO'
+    Default: 'YES'
+    Description: Set to NO when you want to re-use existing subnets in the existing VPC (existing VPC Id must be provided in SageMakerVPCId).
+    Type: String
+
   SageMakerVPCId:
     Type: AWS::EC2::VPC::Id
-    Description: Choose a VPC for SageMaker Studio
-  
-  SageMakerStudioSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Choose subnets or provide a comma-delimited list of subnet ids
-
-  SageMakerSecurityGroupIds:
-    Type: String
-    Description: Choose security groups for SageMaker Studio and SageMaker workloads
+    Description: Choose a VPC for SageMaker Studio. Leave empty to create a new VPC.
     Default: ''
 
+  SAMLBackendSubnetId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Existing private subnet id for SAML backend. Leave empty if CreatePrivateSubnets = YES
+    Default: ''
+
+  SageMakerDomainSubnetId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Choose subnet for SageMaker domain. Leave empty if if CreatePrivateSubnets = YES
+    Default: ''
+
+  VPCCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for a new VPC
+
+  SAMLBackedPrivateSubnetCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.0.0/19
+    Description: CIDR block for a private subnet for SAML backend
+
+  SageMakerDomainPrivateSubnetCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.32.0/19
+    Description: CIDR block for a private subnet for SageMaker domain
+
+  PublicSubnetCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Type: String
+    Default: 10.0.128.0/20
+    Description: CIDR block for a public subnet for Internet and NAT Gateways
+
+  DomainAccessAllowedCIDR:
+    Type: String
+    Description: Allowed CIDR block for CreatePresignedDomainURL API call
+  
 Conditions:
+  ExistingVPCCondition: !Not [ !Equals [ !Ref SageMakerVPCId, ''] ]
   CreateSageMakerDomainCondition: !Equals [ !Ref SageMakerDomainId, '' ]
 
 Resources:
@@ -75,11 +118,14 @@ Resources:
       TemplateURL: cfn-templates/vpc.yaml
       Parameters:
         EnvironmentName : !Ref EnvironmentName
-        NetworkVpc: !Ref NetworkVpcCidr
-        NetworkPrivateSubnet: !Ref NetworkPrivateSubnetCidr
-        NetworkPrivateSubnetSageMaker: !Ref NetworkPrivateSubnetSageMakerCidr
-        NetworkPublicSubnet: !Ref NetworkPublicSubnetCidr
-        PublicIp: !Ref PublicIpCidr
+        ExistingVPCId: !Ref SageMakerVPCId
+        VPCCIDR: !If [ ExistingVPCCondition, !GetAtt GetNetworkConfiguration.VPCCIDR, !Ref VPCCIDR ]
+        CreatePrivateSubnets: !Ref CreatePrivateSubnets
+        ExistingSAMLBackendPrivateSubnetId: !Ref SAMLBackendSubnetId
+        ExistingSageMakerDomainPrivateSubnetId: !Ref SageMakerDomainSubnetId
+        SAMLBackedPrivateSubnetCIDR: !Ref SAMLBackedPrivateSubnetCIDR
+        SageMakerDomainPrivateSubnetCIDR: !Ref SageMakerDomainPrivateSubnetCIDR
+        PublicSubnetCIDR: !Ref PublicSubnetCIDR
       Tags: 
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
@@ -90,30 +136,36 @@ Resources:
       TemplateURL: cfn-templates/iam.yaml
       Parameters:
         EnvironmentName : !Ref EnvironmentName
-        NetworkPrivateSubnet: !Ref NetworkPrivateSubnetCidr
+        AllowedCIDR: !Ref DomainAccessAllowedCIDR
       Tags: 
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
       
-  SageMakerStudioDomain:
+  SageMakerDomain:
     Type: AWS::CloudFormation::Stack
     Condition: CreateSageMakerDomainCondition
     Properties: 
       TemplateURL: cfn-templates/sagemaker-domain.yaml    
       Parameters: 
-        EnvName : !Ref EnvironmentName
-        VPCId : !Ref SageMakerVPCId
-        SageMakerStudioSubnetIds : !Ref SageMakerStudioSubnetIds
-        SageMakerSecurityGroupIds: !Ref SageMakerSecurityGroupIds
+        EnvironmentName: !Ref EnvironmentName
+        VPCId: !GetAtt VPC.Outputs.SageMakerVPCId
+        SageMakerDomainSubnetIds : !GetAtt VPC.Outputs.SageMakerDomainPrivateSubnetId
+        SageMakerSecurityGroupIds: !GetAtt VPC.Outputs.SageMakerSecurityGroupIds
         SageMakerDefaultExecutionRoleArn: !GetAtt IAM.Outputs.SageMakerDefaultExecutionRoleArn
         SetupLambdaExecutionRoleArn: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
       Tags: 
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
 
+  GetNetworkConfiguration:
+    Type: Custom::GetNetworkConfiguration
+    Condition: ExistingVPCCondition
+    Properties:
+      ServiceToken: !GetAtt GetNetworkConfigurationFunction.Arn
+      VPCId: !Ref SageMakerVPCId
 
 ######## API Gateway ########
-  SageMakerDomainSSOAPI:
+  SageMakerDomainSAMLAPI:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
@@ -123,14 +175,21 @@ Resources:
           - !GetAtt VPCStack.Outputs.APIGatewayVpcEndpoint   
 
 ######## Lambda Functions ########
+  GetNetworkConfigurationFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      ReservedConcurrentExecutions: 1
+      CodeUri: functions/get-network-config/
+      Role: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
+      Handler: get_network_config_function.lambda_handler
+
   SAMLBackEndFunction:
     Type: AWS::Serverless::Function 
     Properties:
       ReservedConcurrentExecutions: 1
       CodeUri: functions/saml-backend/
       Role: !GetAtt IAM.Outputs.SAMLBackEndLambdaExecutionRoleArn
-      Handler: index.handler
-      Runtime: nodejs14.x
+      Handler: saml_backend_function.lambda_handler
       Events:
         SAMLBackEnd:
           Type: Api
@@ -141,10 +200,10 @@ Resources:
                   - !GetAtt VPCStack.Outputs.APIGatewayVpcEndpoint
             Path: /saml
             Method: POST
-            RestApiId: !Ref SageMakerDomainSSOAPI
+            RestApiId: !Ref SageMakerDomainSAMLAPI
       VpcConfig:
         SecurityGroupIds:
-          - !Ref SageMakerSecurityGroupIds
+          - !GetAtt VPC.Outputs.SAMLBackendSecurityGroupId
         SubnetIds:
-          - !Ref SageMakerStudioSubnetIds
+          - !GetAtt VPC.Outputs.SAMLBackendPrivateSubnetId
 

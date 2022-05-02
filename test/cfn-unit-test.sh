@@ -19,13 +19,13 @@ aws cloudformation deploy \
     --parameter-overrides \
     EnvironmentName=$ENV_NAME
 
-# 2. Existing VPC
+# 2. Existing VPC, new private subnets
 export VPC_ID=vpc-c513e9b8
 export VPCCIDR=$(aws ec2 describe-vpcs --filters Name="vpc-id",Values=$VPC_ID \
     --output text \
     --query 'Vpcs[0].CidrBlock')
 
-# New private subnets
+# CIDR blocks for private subnets
 export SAMLBACKEND_SN_CIDR="172.31.96.0/19"
 export SMDOMAIN_SN_CIDR="172.31.128.0/19"
 

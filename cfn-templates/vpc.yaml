@@ -44,12 +44,12 @@ Parameters:
     Type: String
   
   ExistingSAMLBackendPrivateSubnetId:
-    Description: Existing private subnet id for SAML backend
+    Description: Existing private subnet id for SAML backend. Leave empty if CreatePrivateSubnets = YES
     Default: ''
     Type: String
 
   ExistingSageMakerDomainPrivateSubnetId:
-    Description: Existing private subnet id for SageMaker domain
+    Description: Existing private subnet id for SageMaker domain. Leave empty if CreatePrivateSubnets = YES
     Default: ''
     Type: String
 
@@ -301,7 +301,7 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  PublicSubnetVPCSageMakerRouteTableAssociation:
+  PublicSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Condition: CreateVPCCondition
     Properties:
