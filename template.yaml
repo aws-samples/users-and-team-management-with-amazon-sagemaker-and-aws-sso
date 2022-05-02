@@ -37,6 +37,14 @@ Outputs:
     Export:
       Name: 'sagemaker-domain-id'
 
+  SAMLBackendEndpoint:
+    Description: "API Gateway endpoint URL acting as the Application ACS URL"
+    Value: !Sub "https://${SageMakerDomainSAMLAPI}.execute-api.${AWS::Region}.amazonaws.com/prod/saml"
+  
+  SAMLAudience:
+    Description: "Application SAML audience"
+    Value: !Sub "https://${SageMakerDomainSAMLAPI}.execute-api.${AWS::Region}.amazonaws.com/"    
+  
 Parameters:
   EnvironmentName:
     Type: String

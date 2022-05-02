@@ -53,6 +53,15 @@ For more information on roles and polices, refer to the blog post [Configuring A
 ### Architecture overview
 
 ## Deployment
+
+### Prerequisites
+[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html), [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) and [python3.8 or later](https://www.python.org/downloads/) must be installed.
+
+The deployment procedure assumes that [AWS Single Sign On](https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html) has been enabled and configured for the [AWS Organization](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_introduction.html) where the solution will be deployed.
+
+You can follow these [instructions](./aws-sso-setup.md) to setup AWS Single Sign On.
+
+### Deploy solution CloudFormation stack
 There are following network infrastructure deployment options:
 - **New VPC**: the solution creates a new VPC with all subnets, one public and one private route tables, NAT and Internet gateways, security groups, and VPC endpoints.
 - **Existing VPC**: you can use your **existing** VPC, a public subnet, and NAT and Internet gateways. No one of these resources are created by the solution in this option. If you use an existing VPC you can choose one of the following options:
@@ -97,9 +106,14 @@ To choose one of these deployment options, provide the following CloudFormation 
 ##### Existing domain
 must be in `IAM` authentication mode
 
+### Create SSO users
+
+### Create 
 ## Test
 
 # Resources
+## Documentation
+- [Attributes for access control](https://docs.aws.amazon.com/singlesignon/latest/userguide/attributesforaccesscontrol.html)
 
 ## Blog posts
 - [Onboarding Amazon SageMaker Studio with AWS SSO and Okta Universal Directory](https://aws.amazon.com/fr/blogs/machine-learning/onboarding-amazon-sagemaker-studio-with-aws-sso-and-okta-universal-directory/)
