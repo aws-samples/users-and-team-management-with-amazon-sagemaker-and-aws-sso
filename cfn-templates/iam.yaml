@@ -6,17 +6,17 @@ Description: Create IAM Roles for SageMaker user profiles and SAML backend Lambd
 
 Outputs:
 
-  SageMakerDefaultExecutionRoleArn:
+  SageMakerStudioExecutionRoleDefaultArn:
     Description: The ARN of the SageMaker default execution role
-    Value: !GetAtt SageMakerDefaultExecutionRole.Arn
+    Value: !GetAtt SageMakerStudioExecutionRoleDefault.Arn
 
-  SageMakerTeam1ExecutionRoleArn:
+  SageMakerStudioExecutionRoleTeam1Arn:
     Description: The ARN of the SageMaker Team1 execution role
-    Value: !GetAtt SageMakerTeam1ExecutionRole.Arn
+    Value: !GetAtt SageMakerStudioExecutionRoleTeam1.Arn
   
-  SageMakerTeam2ExecutionRoleArn:
+  SageMakerStudioExecutionRoleTeam2Arn:
     Description: The ARN of the SageMaker Team2 execution role
-    Value: !GetAtt SageMakerTeam2ExecutionRole.Arn
+    Value: !GetAtt SageMakerStudioExecutionRoleTeam2.Arn
 
   SetupLambdaExecutionRoleArn:
     Description: Lambda execution role for stack setup Lambda function
@@ -37,6 +37,25 @@ Parameters:
     Description: Allowed CIDR block for CreatePresignedDomainURL API call
   
 Resources:
+
+  SageMakerDeniedServicesPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Explicit deny for specific SageMaker services
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AmazonSageMakerDeniedServices
+            Action:
+              - sagemaker:CreatePresignedNotebookInstanceUrl
+              - sagemaker:*NotebookInstance
+              - sagemaker:*NotebookInstanceLifecycleConfig
+              - sagemaker:CreateUserProfile
+              - sagemaker:DeleteDomain
+              - sagemaker:DeleteUserProfile
+            Resource: 
+              - '*'
+            Effect: Deny
 
   SageMakerReadOnlyPolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -215,7 +234,7 @@ Resources:
               StringEquals:
                 aws:PrincipalTag/Team: ${sagemaker:ResourceTag/Team}
 
-  SageMakerDefaultExecutionRole:
+  SageMakerStudioExecutionRoleDefault:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -230,11 +249,12 @@ Resources:
       Path: /
       ManagedPolicyArns:
         - !Ref SageMakerReadOnlyPolicy
+        - !Ref SageMakerDeniedServicesPolicy
       Tags:
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
 
-  SageMakerTeam1ExecutionRole:
+  SageMakerStudioExecutionRoleTeam1:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -251,13 +271,14 @@ Resources:
         - !Ref SageMakerReadOnlyPolicy
         - !Ref SageMakerAccessSupportingServicesPolicy
         - !Ref SageMakerStudioDeveloperAccessPolicy
+        - !Ref SageMakerDeniedServicesPolicy
       Tags:
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
         - Key: Team
           Value: Team1
 
-  SageMakerTeam2ExecutionRole:
+  SageMakerStudioExecutionRoleTeam2:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -274,6 +295,7 @@ Resources:
         - !Ref SageMakerReadOnlyPolicy
         - !Ref SageMakerAccessSupportingServicesPolicy
         - !Ref SageMakerStudioDeveloperAccessPolicy
+        - !Ref SageMakerDeniedServicesPolicy
       Tags:
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
