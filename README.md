@@ -65,19 +65,60 @@ The solution implements a fully isolated SageMaker domain environment with all n
 This solution provisions all required network infrastructure. The CloudFormation template `./cfn-templates/vpc.yaml` contains the source code.
 
 ### IAM Roles
+The following diagram shows the IAM roles in this solution:
 
 ![](design/iam-roles-setup.drawio.svg)
 
-The stack creates three SageMaker execution roles used in the SageMaker domain:
+**1 - Studio execution role**  
+A Studio user profile uses a dedicated Studio execution role with data and resource permissions specific for each team or user group. This role can also use tags to implement ABAC for data and resource access. Refer to the [SageMaker Roles](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-roles.html) documentation for more details.
+
+**2 - SAML backend Lambda execution role**  
+This execution role contains permission to call `CreatePresignedDomainUrl` API. You can configure permission policy to include additional conditional checks using `Condition` keys, for example, allow access to Studio only from a designated range of IP addresses:
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sagemaker:CreatePresignedDomainUrl"
+            ],
+            "Resource": "arn:aws:sagemaker: <Region>:<Account_id>:user-profile/*/*",
+            "Effect": "Allow"
+        },
+        {
+            "Condition": {
+                "NotIpAddress": {
+                    "aws:VpcSourceIp": "10.100.10.0/24"
+                }
+            },
+            "Action": [
+                "sagemaker:*"
+            ],
+            "Resource": "arn:aws:sagemaker: <Region>:<Account_id>:user-profile/*/*",
+            "Effect": "Deny"
+        }
+    ]
+}
+```
+For more examples of how to use conditions in IAM policies, refer to [Control Access to the SageMaker API by Using Identity-based Policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy) documentation.
+
+**3 - SageMaker service**
+SageMaker service assumes the Studio execution role on your behalf. This allows the service to access data and resources, and perform actions on your behalf. The Studio execution role must contain a trust policy allowing SageMaker service to assume this role.
+
+**4 - AWS Organizations Service Control Policies (SCPs)**
+If you use [AWS Organizations](https://aws.amazon.com/organizations/), you can implement [Service Control Policies](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html) (SCPs) to centrally control the maximum available permissions for all accounts and all IAM roles in your organization. 
+
+#### Solution provisioned roles
+The solution CFN stack creates three Studio execution roles used in the SageMaker domain:
 - `SageMakerStudioExecutionRoleDefault`
 - `SageMakerStudioExecutionRoleTeam1`
 - `SageMakerStudioExecutionRoleTeam2`
 
-Please note, no one of the roles has [`AmazonSageMakerFullAccess`](https://docs.aws.amazon.com/sagemaker/latest/dg/security-iam-awsmanpol.html) policy attached. In your real-life SageMaker environment you need to amend role's permissions based on your specific requirements.
+Please note, no one of the roles has [`AmazonSageMakerFullAccess`](https://docs.aws.amazon.com/sagemaker/latest/dg/security-iam-awsmanpol.html) policy attached and has only a limited set of permissions. In your real-life SageMaker environment you need to amend role's permissions based on your specific requirements.
 
 `SageMakerStudioExecutionRoleDefault` has only a custom policy `SageMakerReadOnlyPolicy` attached with a restrictive list of allowed actions. 
 
-The both team roles, `SageMakerStudioExecutionRoleTeam1` and `SageMakerStudioExecutionRoleTeam2` have additionally two custom polices `SageMakerAccessSupportingServicesPolicy` and `SageMakerStudioDeveloperAccessPolicy` allowing usage of particular services and one deny-only policy `SageMakerDeniedServicesPolicy` with explicit deny on some SageMaker API calls.
+The both team roles, `SageMakerStudioExecutionRoleTeam1` and `SageMakerStudioExecutionRoleTeam2` additionally have two custom polices `SageMakerAccessSupportingServicesPolicy` and `SageMakerStudioDeveloperAccessPolicy` allowing usage of particular services and one deny-only policy `SageMakerDeniedServicesPolicy` with explicit deny on some SageMaker API calls.
 
 The Studio developer access policy enforces the `Team` tag for calling any SageMaker `Create*` API. Furthermore, it allows using delete, stop, update, and start operations only on resources tagged with the same `Team` tag:
 ```json
@@ -168,13 +209,16 @@ must be in `IAM` authentication mode
 ## Test
 
 
-https://docs.aws.amazon.com/singlesignon/latest/userguide/configure-abac.html
-
 
 ## Synchronization with identity provider
 
+![](design/aws-sso-idp-synchronization.drawio.svg)
+
+TBD
 
 ## Access management with ABAC
+TBD
+https://docs.aws.amazon.com/singlesignon/latest/userguide/configure-abac.html
 
 # Resources
 
