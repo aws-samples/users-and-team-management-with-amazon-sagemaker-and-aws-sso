@@ -47,6 +47,14 @@ Outputs:
   SAMLAudience:
     Description: "Application SAML audience"
     Value: !Sub "https://${SageMakerDomainSAMLAPI}.execute-api.${AWS::Region}.amazonaws.com/"    
+
+  SageMakerStudioExecutionRoleTeam1Arn:
+    Description: The ARN of the SageMaker Team1 execution role
+    Value: !GetAtt IAM.Outputs.SageMakerStudioExecutionRoleTeam1Arn
+  
+  SageMakerStudioExecutionRoleTeam2Arn:
+    Description: The ARN of the SageMaker Team2 execution role
+    Value: !GetAtt IAM.Outputs.SageMakerStudioExecutionRoleTeam2Arn
   
 Parameters:
   EnvironmentName:

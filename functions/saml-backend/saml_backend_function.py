@@ -23,7 +23,7 @@ def get_user_profile_name():
 
 def lambda_handler(event, context):
     try:
-        logger.debug(json.dumps(event))
+        logger.info(json.dumps(event))
 
         domain_id = "not implemented"
         user_profile_name = get_user_profile_name()
@@ -34,7 +34,7 @@ def lambda_handler(event, context):
                 DomainId=domain_id,
                 UserProfileName=user_profile_name,
                 SessionExpirationDurationInSeconds=session_expiration,
-                ExpiresInSeconds=os.environ.get("PRESIGNED_URL_EXPIRATION", 5)
+                ExpiresInSeconds=int(os.environ.get("PRESIGNED_URL_EXPIRATION", 5))
             )
 
             response = {
