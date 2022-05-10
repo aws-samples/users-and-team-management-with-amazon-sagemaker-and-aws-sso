@@ -2,18 +2,25 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Create a secure VPC environment for SageMaker domain and SAML backend Lambda function
 
 Outputs:
-  SageMakerVPCId:
+  VPCId:
     Value: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
   PublicSubnetId:
     Value: !If [CreateVPCCondition, !Ref PublicSubnet, '']   
   SageMakerDomainPrivateSubnetId:
-    Value: !If [PrivateSubnetsCondition, !Ref SageMakerDomainPrivateSubnet, !Ref ExistingSageMakerDomainPrivateSubnetId]
+    Value: !If
+      - PrivateSubnetsCondition
+      - !Join
+        - ','
+        - - !Ref SageMakerDomainPrivateSubnet 
+      - !Ref ExistingSageMakerDomainPrivateSubnetId
   SAMLBackendPrivateSubnetId:
     Value: !If [PrivateSubnetsCondition, !Ref SAMLBackedPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
   SAMLBackendSecurityGroupId:
     Value: !GetAtt SAMLBackendSecurityGroup.GroupId
   SageMakerDomainSecurityGroupId:
-    Value: !GetAtt SageMakerDomainSecurityGroup.GroupId
+    Value: !Join
+      - ','
+      - - !GetAtt SageMakerDomainSecurityGroup.GroupId
   VPCESecurityGroupId:
     Value: !GetAtt VPCESecurityGroup.GroupId
   APIGatewayVPCE:
@@ -53,7 +60,7 @@ Parameters:
     Default: ''
     Type: String
 
-  SAMLBackedPrivateSubnetCIDR:
+  SAMLBackendPrivateSubnetCIDR:
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
     Type: String
@@ -118,7 +125,7 @@ Resources:
     Condition: PrivateSubnetsCondition
     Properties:
       VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
-      CidrBlock: !Ref SAMLBackedPrivateSubnetCIDR
+      CidrBlock: !Ref SAMLBackendPrivateSubnetCIDR
       MapPublicIpOnLaunch: false
       AvailabilityZone: !Sub "${AWS::Region}a"
       Tags:

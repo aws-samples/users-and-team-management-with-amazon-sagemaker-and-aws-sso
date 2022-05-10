@@ -379,6 +379,11 @@ Resources:
             Effect: Allow
             Action:
               - servicecatalog:Associate*
+              - servicecatalog:Accept*
+              - servicecatalog:Enable*
+              - servicecatalog:Get*
+              - servicecatalog:List*
+              - servicecatalog:Describe*
             Resource:
               - !Sub 'arn:aws:servicecatalog:*:${AWS::AccountId}:*'
               - !Sub 'arn:aws:catalog:*:${AWS::AccountId}:*'
@@ -390,6 +395,15 @@ Resources:
               - sagemaker:DisableSagemakerServicecatalogPortfolio
             Resource:
               - '*'
+          - Sid: SageMakerExecPassRole
+            Effect: Allow
+            Action:
+              - iam:PassRole
+              - iam:GetRole
+            Resource: 
+              - !GetAtt SageMakerStudioExecutionRoleDefault.Arn
+              - !GetAtt SageMakerStudioExecutionRoleTeam1.Arn
+              - !GetAtt SageMakerStudioExecutionRoleTeam2.Arn
 
   SetupLambdaExecutionRole:
     Type: 'AWS::IAM::Role'

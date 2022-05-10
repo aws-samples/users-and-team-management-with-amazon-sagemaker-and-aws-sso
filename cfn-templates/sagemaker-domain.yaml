@@ -22,7 +22,7 @@ Metadata:
         Parameters:
           - VPCId
           - SageMakerDomainSubnetIds
-          - SageMakerSecurityGroupIds
+          - SageMakerDomainSecurityGroupIds
           - SageMakerDomainStorageKMSKeyId
       - Label:
           default: Permissions
@@ -41,7 +41,7 @@ Metadata:
         default: VPC
       SageMakerDomainSubnetIds:
         default: Subnet(s)
-      SageMakerSecurityGroupIds:
+      SageMakerDomainSecurityGroupIds:
         default: Security group(s)
       SageMakerDomainStorageKMSKeyId:
         default: Storage encryption key
@@ -79,10 +79,9 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Choose subnets or provide a comma-delimited list of subnet ids
 
-  SageMakerSecurityGroupIds:
-    Type: String
+  SageMakerDomainSecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
     Description: Choose security groups for SageMaker Studio and SageMaker workloads
-    Default: ''
 
   SageMakerDomainStorageKMSKeyId:
     Type: String
@@ -115,15 +114,7 @@ Parameters:
 Conditions:
   GenerateDomainNameCondition: !Equals [ !Ref DomainName, '' ]
   SageMakerEFSKMSKeyCondition: !Not [ !Equals [ !Ref SageMakerDomainStorageKMSKeyId, ''] ]
-  SMSecurityGroupIdsCondition: !Not [ !Equals [ !Ref SageMakerSecurityGroupIds, '' ] ]
-
-Rules:
-  SageMakerSecurityGroupIdsRule:
-    RuleCondition: !Equals [ !Ref NetworkAccessType, 'VpcOnly' ]
-    Assertions:
-      - Assert: !Not [ !Equals [ !Ref SageMakerSecurityGroupIds, '' ] ]
-        AssertDescription: Security group ids must be provided if network access type set to VPC only
-
+  
 Resources:
   SageMakerStudioDomain:
     Type: AWS::SageMaker::Domain
@@ -132,10 +123,7 @@ Resources:
       AuthMode: !Ref AuthMode
       DefaultUserSettings: 
           ExecutionRole: !Ref SageMakerDefaultExecutionRoleArn
-          SecurityGroups: !If 
-            - SMSecurityGroupIdsCondition
-            - !Ref SageMakerSecurityGroupIds
-            - !Ref 'AWS::NoValue'  
+          SecurityGroups: !Ref SageMakerDomainSecurityGroupIds
       DomainName: !If
         - GenerateDomainNameCondition
         - !Sub '${EnvironmentName}-${AWS::Region}-sagemaker-domain'

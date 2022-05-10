@@ -36,7 +36,7 @@ aws cloudformation deploy \
     EnvironmentName=$ENV_NAME \
     ExistingVPCId=$VPC_ID \
     VPCCIDR=$VPCCIDR \
-    SAMLBackedPrivateSubnetCIDR=$SAMLBACKEND_SN_CIDR \
+    SAMLBackendPrivateSubnetCIDR=$SAMLBACKEND_SN_CIDR \
     SageMakerDomainPrivateSubnetCIDR=$SMDOMAIN_SN_CIDR
 
 # 3. Existing VPC, existing private subnets

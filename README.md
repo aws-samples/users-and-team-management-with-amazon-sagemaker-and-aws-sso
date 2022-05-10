@@ -57,13 +57,6 @@ An AWS SSO user clicks on a corresponding Studio application in their SSO portal
 
 The API Gateway endpoint calls an AWS Lambda function (**2**) that parses the SAML response to extract the domain ID, user ID, and team ID and use them to generate a Studio presigned URL for a specific Studio user profile by calling [`CreatePresignedDomainUrl`](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreatePresignedDomainUrl.html) API via a SageMaker API VPC endpoint (**3**). The Lambda function finally performs a redirection (**4**) via an HTTP 302 response to sign in the user in Studio.
 
-### Network infrastructure
-The solution implements a fully isolated SageMaker domain environment with all network traffic going through [AWS PrivateLink](https://aws.amazon.com/privatelink) connections. You may optionally enable internet access from the Studio notebooks. The solution also creates three [VPC security groups](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html) to control traffic between all solution components such as the SAML backend Lambda function, [VPC endpoints](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html), and SageMaker Studio notebooks.
-
-![](design/network-architecture.drawio.svg)
-
-This solution provisions all required network infrastructure. The CloudFormation template `./cfn-templates/vpc.yaml` contains the source code.
-
 ### IAM Roles
 The following diagram shows the IAM roles in this solution:
 
@@ -72,7 +65,7 @@ The following diagram shows the IAM roles in this solution:
 **1 - Studio execution role**  
 A Studio user profile uses a dedicated Studio execution role with data and resource permissions specific for each team or user group. This role can also use tags to implement ABAC for data and resource access. Refer to the [SageMaker Roles](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-roles.html) documentation for more details.
 
-**2 - SAML backend Lambda execution role**  
+**2 - SAML backend Lambda execution role**   
 This execution role contains permission to call `CreatePresignedDomainUrl` API. You can configure permission policy to include additional conditional checks using `Condition` keys, for example, allow access to Studio only from a designated range of IP addresses:
 ```
 {
@@ -102,10 +95,10 @@ This execution role contains permission to call `CreatePresignedDomainUrl` API. 
 ```
 For more examples of how to use conditions in IAM policies, refer to [Control Access to the SageMaker API by Using Identity-based Policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy) documentation.
 
-**3 - SageMaker service**
+**3 - SageMaker service**  
 SageMaker service assumes the Studio execution role on your behalf. This allows the service to access data and resources, and perform actions on your behalf. The Studio execution role must contain a trust policy allowing SageMaker service to assume this role.
 
-**4 - AWS Organizations Service Control Policies (SCPs)**
+**4 - AWS Organizations Service Control Policies (SCPs)**  
 If you use [AWS Organizations](https://aws.amazon.com/organizations/), you can implement [Service Control Policies](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html) (SCPs) to centrally control the maximum available permissions for all accounts and all IAM roles in your organization. 
 
 #### Solution provisioned roles
@@ -146,6 +139,13 @@ The Studio developer access policy enforces the `Team` tag for calling any SageM
 
 For more information on roles and polices, refer to the blog post [Configuring Amazon SageMaker Studio for teams and groups with complete resource isolation](https://aws.amazon.com/fr/blogs/machine-learning/configuring-amazon-sagemaker-studio-for-teams-and-groups-with-complete-resource-isolation/).
 
+### Network infrastructure
+The solution implements a fully isolated SageMaker domain environment with all network traffic going through [AWS PrivateLink](https://aws.amazon.com/privatelink) connections. You may optionally enable internet access from the Studio notebooks. The solution also creates three [VPC security groups](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html) to control traffic between all solution components such as the SAML backend Lambda function, [VPC endpoints](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html), and SageMaker Studio notebooks.
+
+![](design/network-architecture.drawio.svg)
+
+This solution provisions all required network infrastructure. The CloudFormation template `./cfn-templates/vpc.yaml` contains the source code.
+
 ## Deployment
 
 ### Prerequisites
@@ -155,18 +155,21 @@ The deployment procedure assumes that AWS SSO has been enabled and configured fo
 
 You can follow these [instructions](./aws-sso-setup.md) to setup AWS Single Sign-On.
 
-### Deploy solution CloudFormation stack
+### Solution deployment options
+You can chose several solution deployment option to have the best fit into your existing AWS environment. You can select network and SageMaker domain provisioning options.
+
+#### Network deployment options
 There are following network infrastructure deployment options:
 - **New VPC**: the solution creates a new VPC with all subnets, one public and one private route tables, NAT and Internet gateways, security groups, and VPC endpoints.
 - **Existing VPC**: you can use your **existing** VPC, a public subnet, and NAT and Internet gateways. No one of these resources are created by the solution in this option. If you use an existing VPC you can choose one of the following options:
     - **new private subnets**: the solution creates private subnets without internet access, a route table with a local route only, security groups, and VPC endpoints.
     - **use existing private subnets**: the solution creates security groups and VPC endpoints only.
 
-To choose one of these deployment options, provide the following CloudFormation template parameters.
+To choose one of these deployment options, provide the following CloudFormation template parameters for SAM deployment process.
 
 ##### New VPC
 - `VPCCIDR` (optional): CIDR block for a new VPC. Default is `10.0.0.0/16`
-- `SAMLBackedPrivateSubnetCIDR` (optional): CIDR block for a private subnet for SAML backend. Default is `10.0.0.0/19`
+- `SAMLBackendPrivateSubnetCIDR` (optional): CIDR block for a private subnet for SAML backend. Default is `10.0.0.0/19`
 - `SageMakerDomainPrivateSubnetCIDR` (optional):  CIDR block for a private subnet for SageMaker domain. Default is `10.0.32.0/19`
 - `PublicSubnetCIDR` (optional): CIDR block for a public subnet for Internet and NAT Gateways. Default is `10.0.128.0/20`
 
@@ -177,7 +180,8 @@ To choose one of these deployment options, provide the following CloudFormation 
     ```
     aws ec2 describe-vpcs
     ```
-- `SAMLBackedPrivateSubnetCIDR` (required): CIDR block for a **new** private SAML backend subnet.
+- `CreatePrivateSubnets` (required): Must be set to `YES`
+- `SAMLBackendPrivateSubnetCIDR` (required): CIDR block for a **new** private SAML backend subnet.
 - `SageMakerDomainPrivateSubnetCIDR` (required): CIDR block for a **new** private subnet for SageMaker domain.
 
 ❗ The provided private subnet CIDR blocks must be compatible with your VPC and existing subnets. Refer to [VPC documentation](https://docs.aws.amazon.com/vpc/latest/userguide/configure-your-vpc.html#vpc-sizing-ipv4) on more details on CIDR block associations.
@@ -185,26 +189,116 @@ To choose one of these deployment options, provide the following CloudFormation 
 
 ##### Existing VPC and existing private subnets
 - `ExistingVPCId` (required): Existing VPC id
-- `SAMLBackedPrivateSubnetCIDR` (required): CIDR block for an **existing** subnet. The SAML backend will be created in this subnet.
-- `SageMakerDomainPrivateSubnetCIDR` (required): CIDR block for an **existing** subnet for a SageMaker domain. To list all SageMaker domain subnets you can run the following AWS CLI commands:
+- `CreatePrivateSubnets` (required): Must be set to `NO`
+- `ExistingSAMLBackendPrivateSubnetId` (required): subnet id for an **existing** subnet. The SAML backend will be created in this subnet.
+- `ExistingSageMakerDomainPrivateSubnetId` (required): subnet id for an **existing** subnet for a SageMaker domain. To list all SageMaker domain subnets you can run the following AWS CLI commands:
     ```
     export DOMAIN_ID=$(aws sagemaker list-domains --output text --query 'Domains[0].DomainId')
     aws sagemaker describe-domain --domain-id $DOMAIN_ID --output text --query 'SubnetIds[*]'
     ```
 ❗ For this option you must use an existing SageMaker domain private subnet in the Availability Zone `a`, for example in `us-east-1a` for North Virginia AWS Region. The stack creates SageMaker API, Studio, and runtime VPC endpoints in the Availability Zone `a`.
 
-### SageMaker domain
+#### SageMaker domain deployment options
+The solution provisions a SageMaker domain in `VpcOnly` network mode. You have an option to use already existing domain and create new Studio user profiles only.
 
 ##### New domain
+To create a new domain, leave `SageMakerDomainId` parameter empty.
 
 ##### Existing domain
-must be in `IAM` authentication mode
+If you want to use your existing domain, you can provide the domain id in `SageMakerDomainId` parameter.
+To get the domain id, run the following command in your terminal:
+```sh
+export DOMAIN_ID=$(aws sagemaker list-domains --output text --query 'Domains[0].DomainId')
+```
+
+❗ The must be in `IAM` authentication mode. Run the following command to check the authentication mode:
+```sh
+aws sagemaker describe-domain --domain-id $DOMAIN_ID --output text --query 'AuthMode'
+```
+
+### Deploy SAM template
+1. Install [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) if you do not have it
+2. Clone the source code repository to your local environment
+```sh
+git clone git@ssh.gitlab.aws.dev:ilyiny/amazon-sagemaker-team-and-user-management-sso.git
+```
+3. Build SAM application
+```bash
+sam build
+```
+4. Deploy SAM application
+```bash
+sam deploy --guided
+```
+
+Provide stack parameters according to your existing environment and desired deployment options, such as existing VPC, existing private and public subnets, existing SageMaker domain, as discussed above.
+
+You can leave **all parameters** at their default values to provision new network resources and a new SageMaker domain.
+
+The following table summarizes the parameter default values and usage.
+Parameter | Default value | Usage 
+---|---|---
+`EnvironmentName` | `sagemaker-team-mgmt-sso` | Stack and resource names
+`SageMakerDomainId` | Empty | Leave empty for a new domain. Provide a domain id to use an existing domain
+`CreatePrivateSubnets` | `YES` | Set to `YES` to create new private subnets, in a new or existing VPC. Set to `NO` if you re-use your existing subnets and VPC
+`ExistingVPCId` | Empty | Provide if you use an existing VPC
+`SAMLBackendSubnetId` | Empty | Required only if `CreatePrivateSubnets` = `NO`. Provide a subnet id for an existing subnet
+`SageMakerDomainSubnetId` | Empty | Required only if `CreatePrivateSubnets` = `NO`. Provide a subnet id for an existing subnet
+`VPCCIDR` | Empty | Used only for a new VPC. Leave default or use a custom block
+`SAMLBackedPrivateSubnetCIDR` | `10.0.0.0/19` | Used only if `CreatePrivateSubnets` = YES. Leave default or use a custom block
+`SageMakerDomainPrivateSubnetCIDR` | `10.0.32.0/19` | Used only if `CreatePrivateSubnets` = YES. Leave default or use a custom block
+`PublicSubnetCIDR` | `10.0.128.0/20` | Used only for a new VPC. Leave default or use a custom block
+`DomainAccessAllowedCIDR` | `10.0.0.0/16` | Allowed CIDR block for `CreatePresignedDomainURL` API call 
+
+Wait until the stack deployment complete. The end-to-end deployment with provisioning all network resources and a SageMaker domain takes about 20 minutes.
 
 ### Create SSO users
-
-### Create custom SAML 2.0 applications
+Follow [add AWS SSO user instructions](./aws-sso-setup.md#add-aws-sso-users) to create two users with names `User 1` and `User 2` or use any of your existing two users to test the solution. Retrieve the identity store id which you need for the next step.
 
 ### Create SageMaker Studio user profiles
+Retrieve SSO user id for each of the selected two users. 
+```sh
+export SSO_STORE_ID='<Identity Store ID>'
+export SSO_USER1_NAME='<User 1 Name>'
+export SSO_USER2_NAME='<User 1 Name>'
+export SSO_USER1_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER1_NAME --query 'Users[0].UserId' --output text)
+export SSO_USER2_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER2_NAME --query 'Users[0].UserId' --output text)
+```
+
+Retrieve the domain id:
+```sh
+export DOMAIN_ID=$(aws sagemaker list-domains --output text --query 'Domains[0].DomainId')
+```
+
+Retrieve SageMaker execution roles for each of the teams:
+```
+export EXEC_ROLE_TEAM1=$(aws cloudformation SageMakerStudioExecutionRoleTeam1Arn)
+export EXEC_ROLE_TEAM2=$(aws cloudformation SageMakerStudioExecutionRoleTeam2Arn)
+```
+
+Create three Studio user profiles for _User 1 - Team 1_, _User 1 - Team 2_, and _User 2 - Team 2_ combinations:
+
+```sh
+aws sagemaker create-user-profile \
+  --domain-id $SM_DOMAIN_ID \
+  --user-profile-name $SSO_USER1_ID-Team1 \
+  --tags Key=studiouserid,Value= \
+  --user-settings ExecutionRole=$EXEC_ROLE_TEAM1
+
+aws sagemaker create-user-profile \
+  --domain-id $SM_DOMAIN_ID \
+  --user-profile-name $SSO_USER1_ID-Team2 \
+  --tags Key=studiouserid,Value= \
+  --user-settings ExecutionRole=$EXEC_ROLE_TEAM2
+
+aws sagemaker create-user-profile \
+  --domain-id $SM_DOMAIN_ID \
+  --user-profile-name $SSO_USER2_ID-Team2 \
+  --tags Key=studiouserid,Value= \
+  --user-settings ExecutionRole=$EXEC_ROLE_TEAM2
+```
+
+### Create custom SAML 2.0 applications
 
 ## Test
 
@@ -212,7 +306,7 @@ must be in `IAM` authentication mode
 
 ## Synchronization with identity provider
 
-![](design/aws-sso-idp-synchronization.drawio.svg)
+![idp-sso-sync](design/aws-sso-idp-synchronization.drawio.svg)
 
 TBD
 
