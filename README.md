@@ -29,7 +29,7 @@ Users and groups are managed in an external identity source, for example in Azur
 AWS Single Sign-On service managed SSO users, SSO permission set, and applications. This solution uses custom SAML 2.0 application to provide access to Amazon SageMaker Studio for entitled SSO users. The solution also uses SAML attribute mapping to populate the SAML assertion with specific access-relevant data, such as SageMaker domain id, user id, and user team.
 
 **3 - custom SAML 2.0 applications**  
-The solution creates one application per SageMaker Studio team and assigns one or multiple applications to a user based on user entitlements. Users can access these applications from within their SSO user portal based on assigned permissions. Each application is configured with the [Amazon API Gateway](https://aws.amazon.com/api-gateway/) endpoint URL as its SAML backend. 
+The solution creates one application per SageMaker Studio team and assigns one or multiple applications to a user or a user group based on entitlements. Users can access these applications from within their SSO user portal based on assigned permissions. Each application is configured with the [Amazon API Gateway](https://aws.amazon.com/api-gateway/) endpoint URL as its SAML backend. 
 
 **4 - Amazon SageMaker domain**  
 The solution provisions a SageMaker domain in an AWS account and creates a dedicated user profile for each combination of SSO user and Studio team the user assigned to. The domain must be configured in IAM [authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-iam.html).
@@ -44,9 +44,8 @@ Each Studio user profile uses a dedicated execution role with permission polices
 
 The solution also implements an attribute-based access control (ABAC) using SAML 2.0 attributes, tags on Studio user profiles, and tags on SageMaker execution roles.
 
-
-❗ In this particular configuration we assume that SSO users don't have permissions to log into the AWS account and don't have corresponding AWS SSO-controlled IAM roles in the account. Each user accesses the Studio environment via a presigned URL from a web browser without need to go to AWS console in the AWS account. 
-In a real-life environment you might need to setup [SSO permission sets](https://docs.aws.amazon.com/singlesignon/latest/userguide/permissionsetsconcept.html) for SSO users to allow the authorized users to assume an IAM role and log into an AWS account. For example, you can provide _Data Scientist_ role permissions for a user to be able to interact with account resources and have level of access they need to fulfill their role.
+❗ In this particular configuration we assume that SSO users don't have permissions to sign into the AWS account and don't have corresponding AWS SSO-controlled IAM roles in the account. Each user accesses the Studio environment via a presigned URL from a web browser without need to go to AWS console in the AWS account. 
+In a real-life environment you might need to setup [SSO permission sets](https://docs.aws.amazon.com/singlesignon/latest/userguide/permissionsetsconcept.html) for SSO users to allow the authorized users to assume an IAM role and singing into an AWS account. For example, you can provide _Data Scientist_ role permissions for a user to be able to interact with account resources and have level of access they need to fulfill their role.
 
 ### How it works
 The following diagram presents the end-to-end sign-on flow for an AWS SSO user.
@@ -57,7 +56,11 @@ An AWS SSO user clicks on a corresponding Studio application in their SSO portal
 
 The API Gateway calls a private SAML backend API via a VPC endpoint. AWS Lambda function (**2**) implements the API, parses the SAML response to extract the domain ID, user ID, and team ID and use them to generate a Studio presigned URL for a specific Studio user profile by calling [`CreatePresignedDomainUrl`](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreatePresignedDomainUrl.html) API via a SageMaker API VPC endpoint (**3**). The Lambda function finally performs a redirection (**4**) via an HTTP 302 response to sign in the user in Studio.
 
-### IAM Roles
+❗ The solution implements are **a non-production sample** version of a SAML backend. The Lambda function parses the SAML assertion and uses only attributes in `<saml2:AttributeStatement>` element to construct a `CreatePresignedDomainUrl` API call. 
+In your production solution you must use a proper SAML backend implementation which must include a validation of a SAML response, a signature, and certificates, replay and redirect prevention, and any other features of a SAML authentication process. For example, you can use a [python3-saml SAML backend implementation](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html) or 
+[OneLogin open source SAML toolkit](https://developers.onelogin.com/saml/python) to implement a secure SAML backend.
+
+### IAM roles
 The following diagram shows the IAM roles in this solution:
 
 ![](design/iam-roles-setup.drawio.svg)
@@ -147,6 +150,10 @@ The solution implements a fully isolated SageMaker domain environment with all n
 This solution provisions all required network infrastructure. The CloudFormation template `./cfn-templates/vpc.yaml` contains the source code.
 
 ## Deployment
+To deploy and test the solution you must complete the following steps:
+1. [Deploy solution's stack via a SAM template](#deploy-sam-template)
+2. [Create AWS SSO users](#create-sso-users). You can use your existing AWS SSO users
+3. [Create custom SAML 2.0 applications](#create-custom-saml-20-applications) and assign AWS SSO users to the applications
 
 ### Prerequisites
 [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html), [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) and [python3.8 or later](https://www.python.org/downloads/) must be installed.
@@ -241,10 +248,10 @@ Parameter | Default value | Usage
 `EnvironmentName` | `sagemaker-team-mgmt-sso` | Stack and resource names
 `SageMakerDomainId` | Empty | Leave empty for a new domain. Provide a domain id to use an existing domain
 `CreatePrivateSubnets` | `YES` | Set to `YES` to create new private subnets, in a new or existing VPC. Set to `NO` if you re-use your existing subnets and VPC
-`ExistingVPCId` | Empty | Provide if you use an existing VPC
+`ExistingVPCId` | Empty | Required only if you use an existing VPC
 `SAMLBackendSubnetId` | Empty | Required only if `CreatePrivateSubnets` = `NO`. Provide a subnet id for an existing subnet
 `SageMakerDomainSubnetId` | Empty | Required only if `CreatePrivateSubnets` = `NO`. Provide a subnet id for an existing subnet
-`VPCCIDR` | Empty | Used only for a new VPC. Leave default or use a custom block
+`VPCCIDR` | `10.0.0.0/16` | Used only for a new VPC. Leave default or use a custom block
 `SAMLBackedPrivateSubnetCIDR` | `10.0.0.0/19` | Used only if `CreatePrivateSubnets` = YES. Leave default or use a custom block
 `SageMakerDomainPrivateSubnetCIDR` | `10.0.32.0/19` | Used only if `CreatePrivateSubnets` = YES. Leave default or use a custom block
 `PublicSubnetCIDR` | `10.0.128.0/20` | Used only for a new VPC. Leave default or use a custom block
@@ -343,11 +350,44 @@ Do the following steps for **each** of two required custom SAML 2.0 applications
 ![](./img/sso-app-user.png)
 
 ## Test the solution
-Go to AWS SSO user portal `https://<Identity Store ID>.awsapps.com/start` and login as _User 1_. You see now two SageMaker applications in AWS SSO user portal:
+Go to AWS SSO user portal `https://<Identity Store ID>.awsapps.com/start` and sign as _User 1_. You see now two SageMaker applications in the portal:
 
 ![](img/sso-custom-apps.png)
 
-Click on **SageMaker Studio Team 1**
+Click on **SageMaker Studio Team 1**. 
+You are redirected to SageMaker Studio instance for _Team 1_ in a new browser window:
+
+![](./img/signing-to-studio.png)
+
+The first time you start Studio, SageMaker creates a JupyterServer application, this process takes a few minutes:
+
+![](./img/starting-sm-studio.png)
+
+In Studio, start a new terminal in **File** > **New** > **Terminal**. In the terminal command line enter the command:
+```sh
+aws sts get-caller-identity
+```
+The command returns the Studio execution role:
+
+![](./img/studio-exec-role.png)
+
+In our setup, this role must be different for each team. You can also check that each user in each instance of Studio has own home directory on a mounted Amazon Elastic File Service[https://aws.amazon.com/efs/] (EFS) volume.
+
+Now go back to AWS SSO portal still logged as _User 1_ and click on **SageMaker Studio Team 2** application. Now you redirected to a _Team 2_ Studio instance:
+
+![](./img/signing-to-studio-2.png)
+
+You can sign as _User 2_ in AWS SSO portal. _User 2_ has only one application assigned - **SageMaker Studio Team 2**:
+
+![](./img/sso-custom-apps-2.png)
+
+If you start a instance of Studio via this user application, you can verify that it uses the same SageMaker execution role as _User 1's_ _Team 2_ instance. However, _User 2's_ _Team 2_ instance is completely isolated. _User 2_ has own home directory on a EFS volume and own instance of JupyterServer application.
+
+Now you can sign in Amazon SageMaker console and see that there are three user profiles created:
+
+![](./img/control-panel-profiles.png)
+
+You just implemented a PoC solution to manage multiple user and teams with Studio.
 
 ## Synchronization with identity provider
 
@@ -359,11 +399,14 @@ TBD
 TBD
 https://docs.aws.amazon.com/singlesignon/latest/userguide/configure-abac.html
 
+## Clean-up
+
 # Resources
 
 ## Documentation
 - [AWS Single Sign-On](https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html)
 - [Attributes for access control](https://docs.aws.amazon.com/singlesignon/latest/userguide/attributesforaccesscontrol.html)
+- [Attribute mappings](https://docs.aws.amazon.com/singlesignon/latest/userguide/attributemappingsconcept.html)
 
 ## Blog posts
 - [Onboarding Amazon SageMaker Studio with AWS SSO and Okta Universal Directory](https://aws.amazon.com/fr/blogs/machine-learning/onboarding-amazon-sagemaker-studio-with-aws-sso-and-okta-universal-directory/)

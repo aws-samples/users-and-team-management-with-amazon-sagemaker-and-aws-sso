@@ -213,6 +213,10 @@ Resources:
       Environment:
         Variables:
           PRESIGNED_URL_EXPIRATION: 5
+          SESSION_EXPIRATION: 43200
+          KEY_NAME_DOMAIN_ID: 'domainid'
+          KEY_NAME_USER_ID: 'ssouserid'
+          KEY_NAME_TEAM_ID: 'teamid'
       Events:
         SAMLBackEnd:
           Type: Api
