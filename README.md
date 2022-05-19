@@ -52,9 +52,9 @@ The following diagram presents the end-to-end sign-on flow for an AWS SSO user.
 
 ![](design/solution-flow.drawio.svg)
 
-An AWS SSO user clicks on a corresponding Studio application in their SSO portal. AWS SSO prepares a SAML assertion (**1**) with configured SAML attribute mappings. A custom SAML application is configured with the Amazon API Gateway private endpoint URL as its Assertion Consumer Service (ACS), and needs mapping attributes containing the AWS SSO user ID, team ID, as well as the SageMaker domain ID. We use `domainid`, `ssouserid`, and `teamid` custom attributes to send all needed information to the SAML backend. 
+An AWS SSO user clicks on a corresponding Studio application in their SSO portal. AWS SSO prepares a SAML assertion (**1**) with configured SAML attribute mappings. A custom SAML application is configured with the Amazon API Gateway endpoint URL as its Assertion Consumer Service (ACS), and needs mapping attributes containing the AWS SSO user ID, team ID, as well as the SageMaker domain ID. We use `domainid`, `ssouserid`, and `teamid` custom attributes to send all needed information to the SAML backend. 
 
-The API Gateway calls a private SAML backend API via a VPC endpoint. AWS Lambda function (**2**) implements the API, parses the SAML response to extract the domain ID, user ID, and team ID and use them to generate a Studio presigned URL for a specific Studio user profile by calling [`CreatePresignedDomainUrl`](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreatePresignedDomainUrl.html) API (**3**) via a SageMaker API VPC endpoint. The Lambda function finally returns the presigned URL with HTTP 302 redirection response (**4**) to sign the user in Studio.
+The API Gateway calls a SAML backend API. AWS Lambda function (**2**) implements the API, parses the SAML response to extract the domain ID, user ID, and team ID and use them to generate a Studio presigned URL for a specific Studio user profile by calling [`CreatePresignedDomainUrl`](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreatePresignedDomainUrl.html) API (**3**) via a SageMaker API VPC endpoint. The Lambda function finally returns the presigned URL with HTTP 302 redirection response (**4**) to sign the user in Studio.
 
 ❗ The solution implements are **a non-production sample** version of a SAML backend. The Lambda function parses the SAML assertion and uses only attributes in `<saml2:AttributeStatement>` element to construct a `CreatePresignedDomainUrl` API call. 
 In your production solution you must use a proper SAML backend implementation which must include a validation of a SAML response, a signature, and certificates, replay and redirect prevention, and any other features of a SAML authentication process. For example, you can use a [python3-saml SAML backend implementation](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html) or 
@@ -70,7 +70,7 @@ A Studio user profile uses a dedicated Studio execution role with data and resou
 
 **2 - SAML backend Lambda execution role**   
 This execution role contains permission to call `CreatePresignedDomainUrl` API. You can configure permission policy to include additional conditional checks using `Condition` keys, for example, allow access to Studio only from a designated range of IP addresses within your private corporate network:
-```
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -105,7 +105,34 @@ SageMaker service assumes the Studio execution role on your behalf. This allows 
 You can assign your SSO users to AWS accounts in your AWS Organizations via [SSO permission sets](https://docs.aws.amazon.com/singlesignon/latest/userguide/permissionsetsconcept.html). A permission set is a template that defines a collection of user role specific IAM policies. You manage permission sets in AWS SSO and AWS SSO controls the corresponding IAM roles in each account.
 
 **5 - AWS Organizations Service Control Policies (SCPs)**  
-If you use [AWS Organizations](https://aws.amazon.com/organizations/), you can implement [Service Control Policies](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html) (SCPs) to centrally control the maximum available permissions for all accounts and all IAM roles in your organization. 
+If you use [AWS Organizations](https://aws.amazon.com/organizations/), you can implement [Service Control Policies](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html) (SCPs) to centrally control the maximum available permissions for all accounts and all IAM roles in your organization. For example, in order to centrally prevent access to Studio via AWS console, you can implement the following SCP and attach it to the accounts with SageMaker domain:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "sagemaker:*"
+      ],
+      "Resource": "*",
+      "Effect": "Allow"
+    },
+    {
+      "Condition": {
+        "NotIpAddress": {
+          "aws:VpcSourceIp": "<AuthorizedPrivateSubnet>"
+        }
+      },
+      "Action": [
+        "sagemaker:CreatePresignedDomainUrl"
+      ],
+      "Resource": "*",
+      "Effect": "Deny"
+    }
+  ]
+}
+```
 
 #### Solution provisioned roles
 The solution CFN stack creates three Studio execution roles used in the SageMaker domain:
@@ -258,7 +285,7 @@ Parameter | Default value | Usage
 `SAMLBackedPrivateSubnetCIDR` | `10.0.0.0/19` | Used only if `CreatePrivateSubnets` = YES. Leave default or use a custom block
 `SageMakerDomainPrivateSubnetCIDR` | `10.0.32.0/19` | Used only if `CreatePrivateSubnets` = YES. Leave default or use a custom block
 `PublicSubnetCIDR` | `10.0.128.0/20` | Used only for a new VPC. Leave default or use a custom block
-`DomainAccessAllowedCIDR` | `10.0.0.0/16` | Allowed CIDR block for `CreatePresignedDomainURL` API call 
+`DomainAccessAllowedCIDR` | Empty | Allowed CIDR block for `CreatePresignedDomainURL` API call. Use to restrict access to the Studio to only users from inside a specified network CIDR.
 
 Wait until the stack deployment complete. The end-to-end deployment with provisioning all network resources and a SageMaker domain takes about 20 minutes.
 
@@ -411,14 +438,15 @@ sam delete delete-stack --stack-name <stack name of SAM stack>
 
 ❗ For security reasons and to prevent data loss, the Amazon EFS mount and the content associated with the Amazon SageMaker Studio Domain deployed in this solution **is not** deleted. The VPC and subnets associated with SageMaker domain remain in your AWS account.
 
-Follow [these instructions](https://docs.aws.amazon.com/efs/latest/ug/delete-efs-fs.html) to delete Amazon EFS and [these instructions](https://docs.aws.amazon.com/vpc/latest/userguide/working-with-vpcs.html) to delete the Amazon VPC.
-
+Follow [these instructions](https://docs.aws.amazon.com/efs/latest/ug/delete-efs-fs.html) to delete Amazon EFS and [these instructions](https://docs.aws.amazon.com/vpc/latest/userguide/working-with-vpcs.html) to delete the Amazon VPC. 
 
 ### How to delete the Custom SAML application
 1. Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon) in the SSO management account
 2. Choose **Applications**
 3. Select **SageMaker Studio Team 1**
 4. Go to **Actions** and select **Remove**
+
+Repeat these steps for **SageMaker Studio Team 2** application.
 
 # Resources
 

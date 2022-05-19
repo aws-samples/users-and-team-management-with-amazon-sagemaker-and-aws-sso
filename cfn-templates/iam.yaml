@@ -36,6 +36,9 @@ Parameters:
     Type: String
     Description: Allowed CIDR block for CreatePresignedDomainURL API call
   
+Conditions:
+  RestrictSageMakerToCIDRCondition: !Not [ !Equals [ !Ref AllowedCIDR, ''] ]
+
 Resources:
 
   SageMakerDeniedServicesPolicy:
@@ -302,12 +305,41 @@ Resources:
         - Key: Team
           Value: Team2
 
+  RestrictSageMakerToCIDRPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Deny
+            Action:
+              - 'sagemaker:*'
+            Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
+            Condition:
+              NotIpAddress:
+                  aws:VpcSourceIp: !Ref AllowedCIDR
+
+  SageMakerPermissionsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'sagemaker:CreatePresignedDomainUrl'
+            Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
+
   SAMLBackendLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy'
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - !Ref SageMakerPermissionsPolicy
+        - !If [RestrictSageMakerToCIDRCondition, !Ref RestrictSageMakerToCIDRPolicy, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -319,21 +351,6 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Policies:
-        - PolicyName: RestrictSageMakerToCIDR
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'sagemaker:CreatePresignedDomainUrl'
-                Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
-              - Effect: Deny
-                Action:
-                  - 'sagemaker:*'
-                Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
-                Condition:
-                  NotIpAddress:
-                    aws:VpcSourceIp: !Ref AllowedCIDR
         - PolicyName: AccessVPCResources
           PolicyDocument:
             Version: '2012-10-17'
@@ -371,6 +388,7 @@ Resources:
               - sagemaker:DescribeApp
               - sagemaker:DeleteApp
               - sagemaker:UpdateApp
+              - sagemaker:DeleteUserProfile
             Resource:
               - !Sub "arn:${AWS::Partition}:sagemaker:*:*:domain/*"
               - !Sub "arn:${AWS::Partition}:sagemaker:*:*:user-profile/*"

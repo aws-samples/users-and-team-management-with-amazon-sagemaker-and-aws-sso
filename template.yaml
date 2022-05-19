@@ -122,8 +122,8 @@ Parameters:
 
   DomainAccessAllowedCIDR:
     Type: String
-    Default: 10.0.0.0/16
-    Description: Allowed CIDR block for CreatePresignedDomainURL API call
+    Default: ''
+    Description: Allowed CIDR block for CreatePresignedDomainURL API call. Leave empty to allow access from public internet
   
 Conditions:
   ExistingVPCCondition: !Not [ !Equals [ !Ref ExistingVPCId, ''] ]
@@ -190,9 +190,7 @@ Resources:
     Properties:
       StageName: prod
       EndpointConfiguration:
-        Type: Private
-        VpcEndpointIds: 
-          - !GetAtt VPC.Outputs.APIGatewayVPCE   
+        Type: REGIONAL
 
 ######## Lambda Functions ########
   GetNetworkConfigurationFunction:
@@ -223,8 +221,17 @@ Resources:
           Properties:
             Auth: 
               ResourcePolicy:
-                IntrinsicVpceWhitelist:
-                  - !GetAtt VPC.Outputs.APIGatewayVPCE
+                CustomStatements: !Sub '[{
+                                    "Effect": "Allow",
+                                    "Principal": "*",
+                                    "Action": "execute-api:Invoke",
+                                    "Resource": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/prod/POST/saml",
+                                    "Condition": {
+                                      "IpAddress": {
+                                        "aws:SourceIp": "0.0.0.0/0"
+                                      }
+                                    }
+                                  }]'
             Path: /saml
             Method: POST
             RestApiId: !Ref SageMakerDomainSAMLAPI

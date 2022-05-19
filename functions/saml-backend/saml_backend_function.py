@@ -83,7 +83,7 @@ def lambda_handler(event, context):
             logger.error(f"ClientError exception in CreatePresignedDomainUrl: {ce}")
             response = {
                 "statusCode": ce.response["ResponseMetadata"]["HTTPStatusCode"],
-                "headers": ce.response["ResponseMetadata"]["HTTPHeaders"],
+                "headers": {},
                 "body":  ce.response["Error"]["Message"],
                 "isBase64Encoded": False
             }
