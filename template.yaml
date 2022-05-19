@@ -189,8 +189,15 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
-      EndpointConfiguration:
-        Type: REGIONAL
+      EndpointConfiguration: REGIONAL
+      Auth:
+        ResourcePolicy:
+          CustomStatements: {
+              Effect: 'Allow',
+              Action: 'execute-api:Invoke', 
+              Resource: ['execute-api:/*/*/*'],
+              Principal: '*'
+            }
 
 ######## Lambda Functions ########
   GetNetworkConfigurationFunction:
@@ -219,22 +226,9 @@ Resources:
         SAMLBackEnd:
           Type: Api
           Properties:
-            Auth: 
-              ResourcePolicy:
-                CustomStatements: !Sub '[{
-                                    "Effect": "Allow",
-                                    "Principal": "*",
-                                    "Action": "execute-api:Invoke",
-                                    "Resource": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/prod/POST/saml",
-                                    "Condition": {
-                                      "IpAddress": {
-                                        "aws:SourceIp": "0.0.0.0/0"
-                                      }
-                                    }
-                                  }]'
+            RestApiId: !Ref SageMakerDomainSAMLAPI
             Path: /saml
             Method: POST
-            RestApiId: !Ref SageMakerDomainSAMLAPI
       VpcConfig:
         SecurityGroupIds:
           - !GetAtt VPC.Outputs.SAMLBackendSecurityGroupId

@@ -14,7 +14,7 @@ Outputs:
         - - !Ref SageMakerDomainPrivateSubnet 
       - !Ref ExistingSageMakerDomainPrivateSubnetId
   SAMLBackendPrivateSubnetId:
-    Value: !If [PrivateSubnetsCondition, !Ref SAMLBackedPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
+    Value: !If [PrivateSubnetsCondition, !Ref SAMLBackendPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
   SAMLBackendSecurityGroupId:
     Value: !GetAtt SAMLBackendSecurityGroup.GroupId
   SageMakerDomainSecurityGroupId:
@@ -120,7 +120,7 @@ Resources:
         - Key: EnvironmentName
           Value: !Ref EnvironmentName
   
-  SAMLBackedPrivateSubnet:
+  SAMLBackendPrivateSubnet:
     Type: AWS::EC2::Subnet
     Condition: PrivateSubnetsCondition
     Properties:
@@ -334,12 +334,12 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGateway
 
-  SAMLBackedPrivateSubnetRouteTableAssociation:
+  SAMLBackendPrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Condition: PrivateSubnetsCondition
     Properties:
       RouteTableId: !Ref PrivateRouteTable
-      SubnetId: !If [PrivateSubnetsCondition, !Ref SAMLBackedPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
+      SubnetId: !If [PrivateSubnetsCondition, !Ref SAMLBackendPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
 
   SageMakerDomainPrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -356,7 +356,7 @@ Resources:
       PrivateDnsEnabled: true
       VpcId: !If [CreateVPCCondition, !Ref SageMakerVPC, !Ref ExistingVPCId]
       SubnetIds: 
-        - !If [PrivateSubnetsCondition, !Ref SAMLBackedPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
+        - !If [PrivateSubnetsCondition, !Ref SAMLBackendPrivateSubnet, !Ref ExistingSAMLBackendPrivateSubnetId]
       VpcEndpointType: Interface
       SecurityGroupIds:
         - !GetAtt VPCESecurityGroup.GroupId

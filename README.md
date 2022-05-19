@@ -300,14 +300,14 @@ aws cloudformation describe-stacks \
 ```
 
 ### Create SSO users
-Follow [add AWS SSO user instructions](./aws-sso-setup.md#add-aws-sso-users) to create two users with names `User1` and `User2` or use any two of your existing AWS SSO users to test the solution. Retrieve the identity store id which you need for the next step.
+Follow [add AWS SSO user instructions](./aws-sso-setup.md#add-aws-sso-users) to create two users with names `User1` and `User2` or use any two of your existing AWS SSO users to test the solution. Make sure you use AWS SSO in the same AWS region as you deployed the solution.  Retrieve the identity store id which you need for the next step.
 
 ### Create SageMaker Studio user profiles
 Retrieve SSO user id for each of the selected two users:
 ```sh
 export SSO_STORE_ID=<Identity Store ID>
 export SSO_USER1_NAME=<User 1 Name>
-export SSO_USER2_NAME=<User 1 Name>
+export SSO_USER2_NAME=<User 1 Name>g
 
 export SSO_USER1_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER1_NAME --query 'Users[0].UserId' --output text)
 export SSO_USER2_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER2_NAME --query 'Users[0].UserId' --output text)

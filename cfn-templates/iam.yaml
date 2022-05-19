@@ -318,7 +318,7 @@ Resources:
             Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
             Condition:
               NotIpAddress:
-                  aws:VpcSourceIp: !Ref AllowedCIDR
+                  aws:VpcSourceIp: !If [RestrictSageMakerToCIDRCondition, !Ref AllowedCIDR, '0.0.0.0/0']
 
   SageMakerPermissionsPolicy:
     Type: AWS::IAM::ManagedPolicy
