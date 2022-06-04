@@ -330,6 +330,9 @@ Resources:
           - Effect: Allow
             Action:
               - 'sagemaker:CreatePresignedDomainUrl'
+              - 'sagemaker:ListUserProfiles'
+              - 'sagemaker:CreateUserProfile'
+              - 'sagemaker:DescribeUseProfile'
             Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
 
   SAMLBackendLambdaExecutionRole:

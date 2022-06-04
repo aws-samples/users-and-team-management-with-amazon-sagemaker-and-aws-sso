@@ -1,6 +1,6 @@
 # Team and user management with Amazon SageMaker and AWS Single Sign-On
 
-## Solution overview
+## What this solution is solving
 [Amazon SageMaker Studio](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-ui.html) is a web-based, integrated development environment (IDE) for machine learning (ML) that lets you build, train, debug, deploy, and monitor your ML models. Each on-boarded user in Studio has their own dedicated set of resources, such as compute instances, a home directory on an [Amazon Elastic File System](https://aws.amazon.com/efs/) (Amazon EFS) volume, and a dedicated IAM execution role. 
 
 One of the most common real-world challenges in setting up user access for Studio is how to manage multiple users, groups, and data science teams for data access and resource isolation.
@@ -11,11 +11,13 @@ Many customers implement user management using federated identities with [AWS Si
 
 In SSO authentication mode, there is always **one-to-one** mapping between users and user profiles. This works well in the case when one user is a member of only one data science team. In a more common use case, when a user can participate in multiple ML projects and be a member of multiple teams, the user requires access to different Studio user profiles with different execution roles and permission policies. Since you cannot manage user profiles independently of AWS SSO in SSO authentication mode, you cannot implement a one-to-many mapping between users and Studio user profiles.
 
-The second challenge is to [restrict access to the Studio IDE](https://aws.amazon.com/about-aws/whats-new/2020/12/secure-sagemaker-studio-access-using-aws-privatelink-aws-iam-sourceip-restrictions/) to only users from inside a corporate network or a designated [Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC). You can achieve this by using [IAM-based access control policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy). In this case the SageMaker domain must be configured with [IAM authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-iam.html), because the IAM identity-based polices aren’t supported by the signing-in mechanism in SSO mode.
+In case if you need to establish a strong separation of security contexts, for example for different data categories, or need to entirely prevent the visibility of one group of user’s activity and resources to another, the recommended approach is to create multiple SageMaker domains. At the time of this writing, you can create only one domain per AWS account per region. To implement the strong separation, you can use multiple AWS accounts with one domain per account as a workaround.
 
-This solution addresses these challenges of AWS SSO user management for Amazon SageMaker Studio for a common use case of multiple user groups and a many-to-many mapping between users and teams. The solution outlines how to use a [custom SAML 2.0 application](https://docs.aws.amazon.com/singlesignon/latest/userguide/samlapps.html#addconfigcustomapp) as the mechanism to trigger the user authentication for Studio and to support multiple Studio user profiles per one AWS SSO user. This could be an alternative to using multiple SageMaker domains for security context separation. However, the current restriction of one domain per account and region can render the multi-domain approach less practical.
+The second challenge is to [restrict access to the Studio IDE](https://aws.amazon.com/about-aws/whats-new/2020/12/secure-sagemaker-studio-access-using-aws-privatelink-aws-iam-sourceip-restrictions/) to only users from inside a corporate network or a designated [Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC). You can achieve this by using [IAM-based access control policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy). In this case the SageMaker domain must be configured with [IAM authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-iam.html), because the IAM identity-based polices aren’t supported by the signing-in mechanism in SSO mode. The blog post [Secure access to Amazon SageMaker Studio with AWS SSO and a SAML application](https://aws.amazon.com/blogs/machine-learning/secure-access-to-amazon-sagemaker-studio-with-aws-sso-and-a-saml-application/) solves this challenge and demonstrates how to control network access to SageMaker domain.
 
-## Architecture overview
+This solution addresses these challenges of AWS SSO user management for Amazon SageMaker Studio for a common use case of multiple user groups and a many-to-many mapping between users and teams. The solution outlines how to use a [custom SAML 2.0 application](https://docs.aws.amazon.com/singlesignon/latest/userguide/samlapps.html#addconfigcustomapp) as the mechanism to trigger the user authentication for Studio and to support multiple Studio user profiles per one AWS SSO user. 
+
+## Solution overview
 The solution implements the following architecture:
 
 ![](design/solution-architecture.drawio.svg)
@@ -59,6 +61,10 @@ The API Gateway calls an SAML backend API. AWS Lambda function (**2**) implement
 ❗ The solution implements **a non-production sample** version of an SAML backend. The Lambda function parses the SAML assertion and uses only attributes in `<saml2:AttributeStatement>` element to construct a `CreatePresignedDomainUrl` API call. 
 In your production solution you must use a proper SAML backend implementation which must include a validation of an SAML response, a signature, and certificates, replay and redirect prevention, and any other features of an SAML authentication process. For example, you can use a [python3-saml SAML backend implementation](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html) or 
 [OneLogin open source SAML toolkit](https://developers.onelogin.com/saml/python) to implement a secure SAML backend.
+
+### Dynamic creation of Studio user profiles
+
+https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_user_profile
 
 ### IAM roles
 The following diagram shows the IAM roles in this solution:
@@ -146,7 +152,7 @@ None of the roles has [`AmazonSageMakerFullAccess`](https://docs.aws.amazon.com/
 
 Both team roles, `SageMakerStudioExecutionRoleTeam1` and `SageMakerStudioExecutionRoleTeam2` additionally have two custom polices `SageMakerAccessSupportingServicesPolicy` and `SageMakerStudioDeveloperAccessPolicy` allowing usage of particular services and one deny-only policy `SageMakerDeniedServicesPolicy` with explicit deny on some SageMaker API calls.
 
-The Studio developer access policy enforces the `Team` tag for calling any SageMaker `Create*` API. Furthermore, it allows using delete, stop, update, and start operations only on resources tagged with the same `Team` tag:
+The Studio developer access policy enforces setting of `Team` tag equal to the same value as user's own execution role for calling any SageMaker `Create*` API:
 ```json
 {
     "Condition": {
@@ -167,6 +173,31 @@ The Studio developer access policy enforces the `Team` tag for calling any SageM
     ],
     "Effect": "Allow",
     "Sid": "AmazonSageMakerCreate"
+}
+```
+
+Furthermore, it allows using delete, stop, update, and start operations only on resources tagged with the same `Team` tag as user's execution role:
+```json
+{
+    "Condition": {
+        "StringEquals": {
+            "aws:PrincipalTag/Team": "${sagemaker:ResourceTag/Team}"
+        }
+    },
+    "Action": [
+        "sagemaker:Delete*",
+        "sagemaker:Stop*",
+        "sagemaker:Update*",
+        "sagemaker:Start*",
+        "sagemaker:DisassociateTrialComponent",
+        "sagemaker:AssociateTrialComponent",
+        "sagemaker:BatchPutMetrics"
+    ],
+    "Resource": [
+        "arn:aws:sagemaker:*:<ACCOUNT_ID>:*"
+    ],
+    "Effect": "Allow",
+    "Sid": "AmazonSageMakerUpdateDeleteExecutePolicy"
 }
 ```
 

@@ -184,12 +184,41 @@ Resources:
       ServiceToken: !GetAtt GetNetworkConfigurationFunction.Arn
       VPCId: !Ref ExistingVPCId
 
+  GetUserProfileMetadata:
+    Type: Custom::GetUserProfileMetadata
+    Properties:
+      ServiceToken: !GetAtt GetUserProfileMetadataFunction.Arn
+      Metadata:
+        Team1:
+          DomainId: !If 
+            - CreateSageMakerDomainCondition
+            - !GetAtt SageMakerDomain.Outputs.SageMakerDomainId
+            - !Ref SageMakerDomainId
+          SessionExpiration: 43200
+          Tags:
+            - Key: Team
+              Value: Team1
+          UserSettings:
+            ExecutionRole: !GetAtt IAM.Outputs.SageMakerStudioExecutionRoleTeam1Arn
+        Team2:
+          DomainId: !If 
+            - CreateSageMakerDomainCondition
+            - !GetAtt SageMakerDomain.Outputs.SageMakerDomainId
+            - !Ref SageMakerDomainId
+          SessionExpiration: 43200
+          Tags:
+            - Key: Team
+              Value: Team2
+          UserSettings:
+            ExecutionRole: !GetAtt IAM.Outputs.SageMakerStudioExecutionRoleTeam2Arn
+
 ######## API Gateway ########
   SageMakerDomainSAMLAPI:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
-      EndpointConfiguration: REGIONAL
+      EndpointConfiguration: 
+        Type: REGIONAL
       Auth:
         ResourcePolicy:
           CustomStatements: {
@@ -208,6 +237,14 @@ Resources:
       Role: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
       Handler: get_network_config_function.lambda_handler
 
+  GetUserProfileMetadataFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      ReservedConcurrentExecutions: 1
+      CodeUri: functions/get-user-profile-metadata/
+      Role: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
+      Handler: get_user_profile_metadata_function.lambda_handler
+
   SAMLBackEndFunction:
     Type: AWS::Serverless::Function 
     Properties:
@@ -218,8 +255,7 @@ Resources:
       Environment:
         Variables:
           PRESIGNED_URL_EXPIRATION: 5
-          SESSION_EXPIRATION: 43200
-          KEY_NAME_DOMAIN_ID: 'domainid'
+          USER_PROFILE_METADATA: !GetAtt GetUserProfileMetadata.Metadata
           KEY_NAME_USER_ID: 'ssouserid'
           KEY_NAME_TEAM_ID: 'teamid'
       Events:
@@ -233,5 +269,5 @@ Resources:
         SecurityGroupIds:
           - !GetAtt VPC.Outputs.SAMLBackendSecurityGroupId
         SubnetIds:
-          - !GetAtt VPC.Outputs.SAMLBackendPrivateSubnetId
+          - !GetAtt VPC.Outputs.SAMLBackendPrivateSubnetId  
 

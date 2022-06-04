@@ -1,0 +1,28 @@
+{
+    "Team1":{
+        "DomainId":"<DOMAIN_ID",
+        "SessionExpiration":"<SESSION_EXPIRATION_IN_SECONDS",
+        "Tags":[
+            {
+                "Key":"Team",
+                "Value":"Team1"
+            }
+        ],
+        "UserSettings":{
+            "ExecutionRole":"<EXECUTION_ROLE_TEAM1_ARN>"
+        }
+    },
+    "Team2":{
+        "DomainId":"<DOMAIN_ID",
+        "SessionExpiration":"<SESSION_EXPIRATION_IN_SECONDS",
+        "Tags":[
+            {
+                "Key":"Team",
+                "Value":"Team2"
+            }
+        ],
+        "UserSettings":{
+            "ExecutionRole":"<EXECUTION_ROLE_TEAM2_ARN>"
+        }
+    }
+}

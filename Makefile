@@ -51,3 +51,6 @@ deploy: package
 						  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
 						  --region $(AWS_DEPLOY_REGION) \
 						  --confirm-changeset 
+
+cfn_nag_scan: 
+	cfn_nag_scan --input-path $(TEMPLATE_DIR)

@@ -17,6 +17,7 @@ import json
 import botocore.exceptions
 import base64
 import urllib
+import time
 from xml.dom import minidom
 
 try:
@@ -26,10 +27,13 @@ try:
 except Exception as e:
     print(f"Exception in initializing block: {e}")
 
+try:
+    user_profile_metadata = json.loads(os.environ.get("USER_PROFILE_METADATA", "{}"))
+except Exception as e:
+    print(f"Exception in loading user profile metadata: {e}")
+
 HTTP_REDIRECT = 302
 HTTP_EXCEPTION = 400
-SESSION_EXPIRATION = int(os.environ.get("SESSION_EXPIRATION", 43200))
-KEY_NAME_DOMAIN_ID = os.environ.get("KEY_NAME_DOMAIN_ID", "domainid")
 KEY_NAME_USER_ID = os.environ.get("KEY_NAME_USER_ID", "ssouserid")
 KEY_NAME_TEAM_ID = os.environ.get("KEY_NAME_TEAM_ID", "teamid")
 
@@ -46,6 +50,42 @@ def get_saml_attributes(saml_response_xml):
 def get_user_profile_name(user_id, team_id):
     return f"{user_id}-{team_id}"
 
+def get_user_profile_metadata(team):
+    """
+    This function can be implemented as a microservice to return user and team metadata
+    """
+    return user_profile_metadata.get(team)
+
+def create_presigned_domain_url(user_profile_name, metadata, expires_in_seconds=5):
+    """
+    This function can be implemented as a microservice to manage studio user profiles
+    """
+    user_profiles = sm.list_user_profiles(
+        DomainIdEquals=metadata["DomainId"], 
+        UserProfileNameContains=user_profile_name)["UserProfiles"]
+    
+    if len(user_profiles) > 1:
+        raise Exception(f"{user_profile_name} contains in more than one user profile for domain {metadata['DomainId']}")
+
+    if not len(user_profiles):
+        r = sm.create_user_profile(
+            DomainId=metadata["DomainId"],
+            UserProfileName=user_profile_name,
+            Tags=metadata["Tags"],
+            UserSettings=metadata["UserSettings"]
+        )
+
+        while sm.describe_user_profile(
+            DomainId=metadata["DomainId"],
+            UserProfileName=user_profile_name)["Status"] != "InService": time.sleep(5)
+
+    return sm.create_presigned_domain_url(
+                DomainId=metadata["DomainId"],
+                UserProfileName=user_profile_name,
+                SessionExpirationDurationInSeconds=metadata["SessionExpiration"],
+                ExpiresInSeconds=expires_in_seconds
+            )["AuthorizedUrl"]
+
 def lambda_handler(event, context):
     try:
         logger.info(json.dumps(event))
@@ -55,26 +95,26 @@ def lambda_handler(event, context):
             raise Exception("No body key in the request")
 
         attr_dict = get_saml_attributes(get_xml(body))
-        domain_id = attr_dict[KEY_NAME_DOMAIN_ID]
         user_profile_name = get_user_profile_name(
             attr_dict[KEY_NAME_USER_ID],
             attr_dict[KEY_NAME_TEAM_ID]
             )
 
-        logger.info(f"Got domain_id={domain_id} and constructed user profile name={user_profile_name}")
-    
+        logger.info(f"Got team {attr_dict[KEY_NAME_TEAM_ID]} and constructed user profile name={user_profile_name}")    
+
         try:
-            r = sm.create_presigned_domain_url(
-                DomainId=domain_id,
-                UserProfileName=user_profile_name,
-                SessionExpirationDurationInSeconds=SESSION_EXPIRATION,
-                ExpiresInSeconds=int(os.environ.get("PRESIGNED_URL_EXPIRATION", 5))
-            )
+            metadata = get_user_profile_metadata(attr_dict[KEY_NAME_TEAM_ID])
+            if not metadata:
+                raise Exception(f"no user profile metadata found for team {attr_dict[KEY_NAME_TEAM_ID]}")
 
             response = {
                 "statusCode": HTTP_REDIRECT,
                 "headers": {
-                    "Location": r["AuthorizedUrl"]
+                    "Location": create_presigned_domain_url(
+                        user_profile_name, 
+                        metadata, 
+                        int(os.environ.get("PRESIGNED_URL_EXPIRATION", 5))
+                    )
                 },
                 "isBase64Encoded": False
             }
