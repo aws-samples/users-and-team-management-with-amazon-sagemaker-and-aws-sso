@@ -233,17 +233,71 @@ Resources:
     Type: AWS::Serverless::Function 
     Properties:
       ReservedConcurrentExecutions: 1
-      CodeUri: functions/get-network-config/
+      InlineCode: |
+        # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+        # SPDX-License-Identifier: MIT-0
+
+        import json
+        import boto3
+        import cfnresponse
+        from botocore.exceptions import ClientError
+
+        ec2 = boto3.resource("ec2")
+
+        def lambda_handler(event, context):
+            try:
+                response_status = cfnresponse.SUCCESS
+                r = {}
+
+                if 'RequestType' in event and event['RequestType'] == 'Create':
+                    r["VPCCIDR"] = get_vpc_cidr(
+                        event['ResourceProperties']['VPCId']
+                    )
+
+                cfnresponse.send(event, context, response_status, r, '')
+
+            except ClientError as exception:
+                print(exception)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, physicalResourceId=event.get('PhysicalResourceId'), reason=str(exception))
+
+        def get_vpc_cidr(vpc_id):
+            print(vpc_id)
+
+            return ec2.Vpc(vpc_id).cidr_block
+
       Role: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
-      Handler: get_network_config_function.lambda_handler
+      Handler: index.lambda_handler
 
   GetUserProfileMetadataFunction:
     Type: AWS::Serverless::Function 
     Properties:
       ReservedConcurrentExecutions: 1
-      CodeUri: functions/get-user-profile-metadata/
-      Role: !GetAtt IAM.Outputs.SetupLambdaExecutionRoleArn
-      Handler: get_user_profile_metadata_function.lambda_handler
+      InlineCode: |
+        # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+        # SPDX-License-Identifier: MIT-0
+
+        import json
+        import boto3
+        import cfnresponse
+        from botocore.exceptions import ClientError
+
+        def lambda_handler(event, context):
+            try:
+                response_status = cfnresponse.SUCCESS
+                r = {}
+
+                if 'RequestType' in event and event['RequestType'] == 'Create':
+                    r["Metadata"] = json.dumps(event['ResourceProperties']['Metadata'])
+
+                cfnresponse.send(event, context, response_status, r, '')
+
+            except ClientError as exception:
+                print(exception)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, physicalResourceId=event.get('PhysicalResourceId'), reason=str(exception))
+
+      Handler: index.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
 
   SAMLBackEndFunction:
     Type: AWS::Serverless::Function 

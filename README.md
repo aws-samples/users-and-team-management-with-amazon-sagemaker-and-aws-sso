@@ -28,7 +28,7 @@ The main high-level architecture components are:
 Users and groups are managed in an external identity source, for example in Azure Active Directory. User assignments to AD groups define what permissions a particular user has and which SageMaker Studio "team" they have access to. The identity source must by synchronized with AWS SSO.
 
 **2 - AWS Single Sign-On**  
-AWS Single Sign-On service manages SSO users, SSO permission set, and applications. This solution uses custom a SAML 2.0 application to provide access to Amazon SageMaker Studio for entitled SSO users. The solution also uses SAML attribute mapping to populate the SAML assertion with specific access-relevant data, such as SageMaker domain id, user id, and user team.
+AWS Single Sign-On service manages SSO users, SSO permission set, and applications. This solution uses custom a SAML 2.0 application to provide access to Amazon SageMaker Studio for entitled SSO users. The solution also uses SAML attribute mapping to populate the SAML assertion with specific access-relevant data, such as user id and user team.
 
 **3 - custom SAML 2.0 applications**  
 The solution creates one application per SageMaker Studio team and assigns one or multiple applications to a user or a user group based on entitlements. Users can access these applications from within their SSO user portal based on assigned permissions. Each application is configured with the [Amazon API Gateway](https://aws.amazon.com/api-gateway/) endpoint URL as its SAML backend. 
@@ -37,7 +37,7 @@ The solution creates one application per SageMaker Studio team and assigns one o
 The solution provisions a SageMaker domain in an AWS account and creates a dedicated user profile for each combination of SSO user and Studio team the user is assigned to. The domain must be configured in IAM [authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-iam.html).
 
 **5 - Studio user profiles**  
-You must provision a dedicated user profile for each _user-team_ combination. For example, if a user is a member of two Studio teams and has corresponding permissions, you need to provision two separate user profiles for this user. Each profile always belongs to one and only one user.
+The solution automatically creates a dedicated user profile for each _user-team_ combination. For example, if a user is a member of two Studio teams and has corresponding permissions, the solution provisions two separate user profiles for this user. Each profile always belongs to one and only one user.
 
 To demonstrate the configuration, we use two users, _User 1_, _User 2_, and two Studio teams, _Team 1_, _Team 2_. The _User 1_ belongs to both teams, while the _User 2_ belongs to _Team 2_ only. The _User 1_ can access Studio environments for both teams, while the _User 2_ can access only the Studio environment for _Team 2_.
 
@@ -54,17 +54,46 @@ The following diagram presents the end-to-end sign-on flow for an AWS SSO user:
 
 ![](design/solution-flow.drawio.svg)
 
-An AWS SSO user clicks on a corresponding Studio application in their SSO portal. AWS SSO prepares a SAML assertion (**1**) with configured SAML attribute mappings. A custom SAML application is configured with the Amazon API Gateway endpoint URL as its Assertion Consumer Service (ACS), and needs mapping attributes containing the AWS SSO user ID, team ID, as well as the SageMaker domain ID. We use `domainid`, `ssouserid`, and `teamid` custom attributes to send all needed information to the SAML backend. 
+An AWS SSO user clicks on a corresponding Studio application in their SSO portal. AWS SSO prepares a SAML assertion (**1**) with configured SAML attribute mappings. A custom SAML application is configured with the Amazon API Gateway endpoint URL as its Assertion Consumer Service (ACS), and needs mapping attributes containing the AWS SSO user ID and team ID. We use `ssouserid` and `teamid` custom attributes to send all needed information to the SAML backend. 
 
-The API Gateway calls an SAML backend API. AWS Lambda function (**2**) implements the API, parses the SAML response to extract the domain ID, user ID, and team ID and uses them to generate a Studio presigned URL for a specific Studio user profile by calling [`CreatePresignedDomainUrl`](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreatePresignedDomainUrl.html) API (**3**) via a SageMaker API VPC endpoint. The Lambda function finally returns the presigned URL with HTTP 302 redirection response (**4**) to sign the user in Studio.
+The API Gateway calls an SAML backend API. AWS Lambda function (**2**) implements the API, parses the SAML response to extract the user ID and team ID. The function uses these attributes to retrieve a team-specific configuration, such as an execution role and SageMaker domain ID. The backend function checks if a required user profile exists in the domain, and creates a new one with the corresponding configuration settings if no profile exists. Afterwards, the function generates a Studio presigned URL for a specific Studio user profile by calling [`CreatePresignedDomainUrl`](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreatePresignedDomainUrl.html) API (**3**) via a SageMaker API VPC endpoint. The Lambda function finally returns the presigned URL with HTTP 302 redirection response (**4**) to sign the user in Studio.
 
 ❗ The solution implements **a non-production sample** version of an SAML backend. The Lambda function parses the SAML assertion and uses only attributes in `<saml2:AttributeStatement>` element to construct a `CreatePresignedDomainUrl` API call. 
 In your production solution you must use a proper SAML backend implementation which must include a validation of an SAML response, a signature, and certificates, replay and redirect prevention, and any other features of an SAML authentication process. For example, you can use a [python3-saml SAML backend implementation](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html) or 
 [OneLogin open source SAML toolkit](https://developers.onelogin.com/saml/python) to implement a secure SAML backend.
 
 ### Dynamic creation of Studio user profiles
+The solution automatically creates Studio user profiles for each combination _User-Team_, as soon as the SSO sign-in process requests a presigned URL. The creation of a user profile is based on the configured metadata in the [SAM template](./template.yaml):
+```yaml
+Metadata:
+  Team1:
+    DomainId: !If 
+      - CreateSageMakerDomainCondition
+      - !GetAtt SageMakerDomain.Outputs.SageMakerDomainId
+      - !Ref SageMakerDomainId
+    SessionExpiration: 43200
+    Tags:
+      - Key: Team
+        Value: Team1
+    UserSettings:
+      ExecutionRole: !GetAtt IAM.Outputs.SageMakerStudioExecutionRoleTeam1Arn
+  Team2:
+    DomainId: !If 
+      - CreateSageMakerDomainCondition
+      - !GetAtt SageMakerDomain.Outputs.SageMakerDomainId
+      - !Ref SageMakerDomainId
+    SessionExpiration: 43200
+    Tags:
+      - Key: Team
+        Value: Team2
+    UserSettings:
+      ExecutionRole: !GetAtt IAM.Outputs.SageMakerStudioExecutionRoleTeam2Arn
+```
 
-https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_user_profile
+You can configure own teams, custom settings, and tags simply by adding them to the metadata configuration for the CloudFormation resource `GetUserProfileMetadata`. 
+Refer to the `create_user_profile` boto3 [documentation](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker.html#SageMaker.Client.create_user_profile) for a further configuration elements of `UserSettings`.
+
+In your productive solution you can use a dedicated microservice to manage and retrieve user profile metadata. For example, you also can use [Amazon DynamoDB](https://aws.amazon.com/dynamodb) to store and manage the metadata.
 
 ### IAM roles
 The following diagram shows the IAM roles in this solution:
@@ -333,61 +362,6 @@ aws cloudformation describe-stacks \
 ### Create SSO users
 Follow [add AWS SSO user instructions](./aws-sso-setup.md#add-aws-sso-users) to create two users with names `User1` and `User2` or use any two of your existing AWS SSO users to test the solution. Make sure you use AWS SSO in the same AWS region in which you deployed the solution.  Retrieve the identity store id which you need for the next step.
 
-### Create SageMaker Studio user profiles
-Retrieve SSO user id for each of the selected two users:
-```sh
-export SSO_STORE_ID=<Identity Store ID>
-export SSO_USER1_NAME=<User 1 Name>
-export SSO_USER2_NAME=<User 1 Name>g
-
-export SSO_USER1_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER1_NAME --query 'Users[0].UserId' --output text)
-export SSO_USER2_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER2_NAME --query 'Users[0].UserId' --output text)
-```
-
-Retrieve the domain id:
-```sh
-export DOMAIN_ID=$(aws sagemaker list-domains --output text --query 'Domains[0].DomainId')
-```
-
-Retrieve SageMaker execution roles for each of the teams:
-```sh
-export STACK_NAME=<SAM stack name>
-export EXEC_ROLE_TEAM1=$(aws cloudformation describe-stacks --stack-name $STACK_NAME | jq -r '.Stacks[].Outputs[] | select(.OutputKey=="SageMakerStudioExecutionRoleTeam1Arn") | .OutputValue')
-export EXEC_ROLE_TEAM2=$(aws cloudformation describe-stacks --stack-name $STACK_NAME | jq -r '.Stacks[].Outputs[] | select(.OutputKey=="SageMakerStudioExecutionRoleTeam2Arn") | .OutputValue')
-```
-
-Create three Studio user profiles for _User 1 - Team 1_, _User 1 - Team 2_, and _User 2 - Team 2_ combinations. You must set `studiouserid` tag to a unique value for each user:
-
-```sh
-aws sagemaker create-user-profile \
-  --domain-id $DOMAIN_ID \
-  --user-profile-name $SSO_USER1_ID-Team1 \
-  --tags Key=studiouserid,Value=ilyiny+demo@amazon.com \
-  --user-settings ExecutionRole=$EXEC_ROLE_TEAM1
-
-aws sagemaker create-user-profile \
-  --domain-id $DOMAIN_ID \
-  --user-profile-name $SSO_USER1_ID-Team2 \
-  --tags Key=studiouserid,Value=ilyiny+demo@amazon.com \
-  --user-settings ExecutionRole=$EXEC_ROLE_TEAM2
-
-aws sagemaker create-user-profile \
-  --domain-id $DOMAIN_ID \
-  --user-profile-name $SSO_USER2_ID-Team2 \
-  --tags Key=studiouserid,Value=ilyiny+demo-sm-sso-2@amazon.com \
-  --user-settings ExecutionRole=$EXEC_ROLE_TEAM2
-```
-
-If you need to see the tags assigned to a user profile, you must run the following AWS CLI command:
-```sh
-export USER_PROFILE_ARN=$(aws sagemaker describe-user-profile \
-  --user-profile-name <user-profile-name> \
-  --domain-id $DOMAIN_ID \
-  --output text --query 'UserProfileArn')
-
-aws sagemaker list-tags --resource-arn $USER_PROFILE_ARN
-```
-
 ### Create custom SAML 2.0 applications
 Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon) on the AWS management account of your AWS Organizations. Make sure you select the same region as the one where you deployed the solution stack.
 
@@ -407,7 +381,6 @@ Do the following steps for **each** of two required custom SAML 2.0 applications
 10. Go to the **Attribute mappings** tab
 11. Set the Subject to **email** and format **emailAddress**
 12. Add new attributes:
-    - `domainid` set to the value of `SageMakerDomainId` key of the SAM stack output
     - `ssouserid` set to `${user:AD_GUID}`
     - `teamid` set to `Team1` or `Team2` respectively for each of the two applications
 

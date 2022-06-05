@@ -85,3 +85,46 @@ aws ec2 describe-subnets \
 
 # SageMaker domain authentication mode
 aws sagemaker describe-domain --domain-id $DOMAIN_ID --output text --query 'AuthMode'
+
+# Get the domain id
+export DOMAIN_ID=$(aws sagemaker list-domains --output text --query 'Domains[0].DomainId')
+
+# Get the execution roles
+export STACK_NAME=<SAM stack name>
+export EXEC_ROLE_TEAM1=$(aws cloudformation describe-stacks --stack-name $STACK_NAME | jq -r '.Stacks[].Outputs[] | select(.OutputKey=="SageMakerStudioExecutionRoleTeam1Arn") | .OutputValue')
+export EXEC_ROLE_TEAM2=$(aws cloudformation describe-stacks --stack-name $STACK_NAME | jq -r '.Stacks[].Outputs[] | select(.OutputKey=="SageMakerStudioExecutionRoleTeam2Arn") | .OutputValue')
+
+# Get SSO user id
+export SSO_STORE_ID=<Identity Store ID>
+export SSO_USER1_NAME=<User 1 Name>
+export SSO_USER2_NAME=<User 1 Name>g
+
+export SSO_USER1_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER1_NAME --query 'Users[0].UserId' --output text)
+export SSO_USER2_ID=$(aws identitystore list-users --identity-store-id $SSO_STORE_ID --filter AttributePath='UserName',AttributeValue=$SSO_USER2_NAME --query 'Users[0].UserId' --output text)
+
+# Create Studio user profiles
+aws sagemaker create-user-profile \
+  --domain-id $DOMAIN_ID \
+  --user-profile-name $SSO_USER1_ID-Team1 \
+  --tags Key=studiouserid,Value=ilyiny+demo@amazon.com \
+  --user-settings ExecutionRole=$EXEC_ROLE_TEAM1
+
+aws sagemaker create-user-profile \
+  --domain-id $DOMAIN_ID \
+  --user-profile-name $SSO_USER1_ID-Team2 \
+  --tags Key=studiouserid,Value=ilyiny+demo@amazon.com \
+  --user-settings ExecutionRole=$EXEC_ROLE_TEAM2
+
+aws sagemaker create-user-profile \
+  --domain-id $DOMAIN_ID \
+  --user-profile-name $SSO_USER2_ID-Team2 \
+  --tags Key=studiouserid,Value=ilyiny+demo-sm-sso-2@amazon.com \
+  --user-settings ExecutionRole=$EXEC_ROLE_TEAM2
+
+# List the tags assigned to a user profile
+export USER_PROFILE_ARN=$(aws sagemaker describe-user-profile \
+  --user-profile-name <user-profile-name> \
+  --domain-id $DOMAIN_ID \
+  --output text --query 'UserProfileArn')
+
+aws sagemaker list-tags --resource-arn $USER_PROFILE_ARN
