@@ -63,7 +63,7 @@ The API Gateway calls an SAML backend API. AWS Lambda function (**2**) implement
 In your production solution you must use a proper SAML backend implementation which must include a validation of an SAML response, a signature, and certificates, replay and redirect prevention, and any other features of an SAML authentication process. For example, you can use a [python3-saml SAML backend implementation](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html) or 
 [OneLogin open source SAML toolkit](https://developers.onelogin.com/saml/python) to implement a secure SAML backend.
 
-### Dynamic creation of Studio user profiles
+### Dynamic creation of Studio user profiles
 The solution automatically creates Studio user profiles for each combination _User-Team_, as soon as the SSO sign-in process requests a presigned URL. The creation of a user profile is based on the configured metadata in the [AWS SAM template](./template.yaml):
 ```yaml
 Metadata:
