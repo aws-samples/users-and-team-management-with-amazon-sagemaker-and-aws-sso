@@ -77,12 +77,12 @@ def create_presigned_domain_url(user_profile_name, metadata, expires_in_seconds=
 
         while sm.describe_user_profile(
             DomainId=metadata["DomainId"],
-            UserProfileName=user_profile_name)["Status"] != "InService": time.sleep(5)
+            UserProfileName=user_profile_name)["Status"] != "InService": time.sleep(3)
 
     return sm.create_presigned_domain_url(
                 DomainId=metadata["DomainId"],
                 UserProfileName=user_profile_name,
-                SessionExpirationDurationInSeconds=metadata["SessionExpiration"],
+                SessionExpirationDurationInSeconds=int(metadata["SessionExpiration"]),
                 ExpiresInSeconds=expires_in_seconds
             )["AuthorizedUrl"]
 

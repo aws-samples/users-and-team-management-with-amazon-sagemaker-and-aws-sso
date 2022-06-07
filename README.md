@@ -1,21 +1,22 @@
-# Team and user management with Amazon SageMaker and AWS Single Sign-On
+# Team and user management with Amazon SageMaker and AWS SSO
 
-## What this solution is solving
-[Amazon SageMaker Studio](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-ui.html) is a web-based, integrated development environment (IDE) for machine learning (ML) that lets you build, train, debug, deploy, and monitor your ML models. Each on-boarded user in Studio has their own dedicated set of resources, such as compute instances, a home directory on an [Amazon Elastic File System](https://aws.amazon.com/efs/) (Amazon EFS) volume, and a dedicated IAM execution role. 
+This code repository is for the [AWS Machine Learning Blog](https://aws.amazon.com/blogs/machine-learning/) [post]().
+
+[Amazon SageMaker Studio](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-ui.html) is a web-based integrated development environment (IDE) for machine learning (ML) that lets you build, train, debug, deploy, and monitor your ML models. Each onboarded user in Studio has their own dedicated set of resources, such as compute instances, a home directory on an [Amazon Elastic File System](https://aws.amazon.com/efs/) (Amazon EFS) volume, and a dedicated [Identity and Access Management](https://aws.amazon.com/iam/) (IAM) execution role. 
 
 One of the most common real-world challenges in setting up user access for Studio is how to manage multiple users, groups, and data science teams for data access and resource isolation.
 
-Many customers implement user management using federated identities with [AWS Single Sign-On](https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html) (AWS SSO) and an external identity provider, such as Active Directory (AD) or AWS Managed Microsoft AD directory. It is aligned with AWS [best practice](https://wa.aws.amazon.com/wat.question.SEC_2.en.html) of using temporary credentials to access AWS accounts.
+Many customers implement user management using federated identities with [AWS Single Sign-On](https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html) (AWS SSO) and an external identity provider (IdP), such as Active Directory (AD) or AWS Managed Microsoft AD directory. It's aligned with the AWS [recommended practice](https://wa.aws.amazon.com/wat.question.SEC_2.en.html) of using temporary credentials to access AWS accounts.
 
-[Amazon SageMaker Domain](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-entity-status.html) supports AWS SSO and can be configured in SSO [authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-sso-users.html). In this case each entitled SSO user has their own [Studio user profile](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-entity-status.html). Users given access to Studio have a unique sign-in URL that directly opens Studio, and they sign in with their SSO credentials. Organizations manage their users in AWS SSO instead of the SageMaker domain. You can assign multiple users access to the domain at the same time. Customers use Studio user profiles for each user to define the user’s security permissions in Studio notebooks via an [Identity and Access Management](https://aws.amazon.com/iam/) (IAM) role attached to the user profile.
+[Amazon SageMaker](https://aws.amazon.com/sagemaker) [domain](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-entity-status.html) supports AWS SSO and can be configured in AWS SSO [authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-sso-users.html). In this case, each entitled AWS SSO user has their own [Studio user profile](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-entity-status.html). Users given access to Studio have a unique sign-in URL that directly opens Studio, and they sign in with their AWS SSO credentials. Organizations manage their users in AWS SSO instead of the SageMaker domain. You can assign multiple users access to the domain at the same time. You can use Studio user profiles for each user to define their security permissions in Studio notebooks via an IAM role attached to the user profile, called an execution role. This role controls permissions for SageMaker operations according to its IAM permission policies.
 
-In SSO authentication mode, there is always **one-to-one** mapping between users and user profiles. This works well in the case when one user is a member of only one data science team. In a more common use case, when a user can participate in multiple ML projects and be a member of multiple teams, the user requires access to different Studio user profiles with different execution roles and permission policies. Since you cannot manage user profiles independently of AWS SSO in SSO authentication mode, you cannot implement a one-to-many mapping between users and Studio user profiles.
+In AWS SSO authentication mode, there is always one-to-one mapping between users and user profiles. The SageMaker domain manages the creation of user profiles based on the AWS SSO user ID. You can’t create user profiles via the [AWS Management Console](http://aws.amazon.com/console). This works well in the case when one user is a member of only one data science team or if users have the same or very similar access requirements across their projects and teams. In a more common use case, when a user can participate in multiple ML projects and be a member of multiple teams with slightly different permission requirements, the user requires access to different Studio user profiles with different execution roles and permission policies. Because you can’t manage user profiles independently of AWS SSO in AWS SSO authentication mode, you can’t implement a one-to-many mapping between users and Studio user profiles.
 
-In case if you need to establish a strong separation of security contexts, for example for different data categories, or need to entirely prevent the visibility of one group of user’s activity and resources to another, the recommended approach is to create multiple SageMaker domains. At the time of this writing, you can create only one domain per AWS account per region. To implement the strong separation, you can use multiple AWS accounts with one domain per account as a workaround.
+If you need to establish a strong separation of security contexts, for example for different data categories, or need to entirely prevent the visibility of one group of users’ activity and resources to another, the recommended approach is to create multiple SageMaker domains. At the time of this writing, you can create only one domain per AWS account per Region. To implement the strong separation, you can use multiple AWS accounts with one domain per account as a workaround.
 
-The second challenge is to [restrict access to the Studio IDE](https://aws.amazon.com/about-aws/whats-new/2020/12/secure-sagemaker-studio-access-using-aws-privatelink-aws-iam-sourceip-restrictions/) to only users from inside a corporate network or a designated [Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC). You can achieve this by using [IAM-based access control policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy). In this case the SageMaker domain must be configured with [IAM authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-iam.html), because the IAM identity-based polices aren’t supported by the signing-in mechanism in SSO mode. The blog post [Secure access to Amazon SageMaker Studio with AWS SSO and a SAML application](https://aws.amazon.com/blogs/machine-learning/secure-access-to-amazon-sagemaker-studio-with-aws-sso-and-a-saml-application/) solves this challenge and demonstrates how to control network access to SageMaker domain.
+The second challenge is to [restrict access to the Studio IDE](https://aws.amazon.com/about-aws/whats-new/2020/12/secure-sagemaker-studio-access-using-aws-privatelink-aws-iam-sourceip-restrictions/) to only users from inside a corporate network or a designated VPC. You can achieve this by using [IAM-based access control policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy). In this case the SageMaker domain must be configured with [IAM authentication mode](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-iam.html), because the IAM identity-based polices aren’t supported by the sign-in mechanism in AWS SSO mode. The post [Secure access to Amazon SageMaker Studio with AWS SSO and a SAML application](https://aws.amazon.com/blogs/machine-learning/secure-access-to-amazon-sagemaker-studio-with-aws-sso-and-a-saml-application/) solves this challenge and demonstrates how to control network access to a SageMaker domain.
 
-This solution addresses these challenges of AWS SSO user management for Amazon SageMaker Studio for a common use case of multiple user groups and a many-to-many mapping between users and teams. The solution outlines how to use a [custom SAML 2.0 application](https://docs.aws.amazon.com/singlesignon/latest/userguide/samlapps.html#addconfigcustomapp) as the mechanism to trigger the user authentication for Studio and to support multiple Studio user profiles per one AWS SSO user. 
+This solution addresses these challenges of AWS SSO user management for Studio for a common use case of multiple user groups and a many-to-many mapping between users and teams. The solution outlines how to use a [custom SAML 2.0 application](https://docs.aws.amazon.com/singlesignon/latest/userguide/samlapps.html#addconfigcustomapp) as the mechanism to trigger the user authentication for Studio and support multiple Studio user profiles per one AWS SSO user. 
 
 ## Solution overview
 The solution implements the following architecture:
@@ -28,7 +29,7 @@ The main high-level architecture components are:
 Users and groups are managed in an external identity source, for example in Azure Active Directory. User assignments to AD groups define what permissions a particular user has and which SageMaker Studio "team" they have access to. The identity source must by synchronized with AWS SSO.
 
 **2 - AWS Single Sign-On**  
-AWS Single Sign-On service manages SSO users, SSO permission set, and applications. This solution uses custom a SAML 2.0 application to provide access to Amazon SageMaker Studio for entitled SSO users. The solution also uses SAML attribute mapping to populate the SAML assertion with specific access-relevant data, such as user id and user team.
+AWS Single Sign-On service manages SSO users, SSO permission set, and applications. This solution uses custom a SAML 2.0 application to provide access to Studio for entitled SSO users. The solution also uses SAML attribute mapping to populate the SAML assertion with specific access-relevant data, such as user id and user team.
 
 **3 - custom SAML 2.0 applications**  
 The solution creates one application per SageMaker Studio team and assigns one or multiple applications to a user or a user group based on entitlements. Users can access these applications from within their SSO user portal based on assigned permissions. Each application is configured with the [Amazon API Gateway](https://aws.amazon.com/api-gateway/) endpoint URL as its SAML backend. 
@@ -63,7 +64,7 @@ In your production solution you must use a proper SAML backend implementation wh
 [OneLogin open source SAML toolkit](https://developers.onelogin.com/saml/python) to implement a secure SAML backend.
 
 ### Dynamic creation of Studio user profiles
-The solution automatically creates Studio user profiles for each combination _User-Team_, as soon as the SSO sign-in process requests a presigned URL. The creation of a user profile is based on the configured metadata in the [SAM template](./template.yaml):
+The solution automatically creates Studio user profiles for each combination _User-Team_, as soon as the SSO sign-in process requests a presigned URL. The creation of a user profile is based on the configured metadata in the [AWS SAM template](./template.yaml):
 ```yaml
 Metadata:
   Team1:
@@ -132,6 +133,26 @@ This execution role contains permission to call `CreatePresignedDomainUrl` API. 
 }
 ```
 For more examples of how to use conditions in IAM policies, refer to [Control Access to the SageMaker API by Using Identity-based Policies](https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#api-access-policy) documentation.
+
+Since the SAML backend Lambda function creates a new Studio user profile, it must have `iam:PassRole` permission for Studio execution roles which are attached to the profile:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "iam:PassRole"
+            ],
+            "Resource": [
+                "arn:aws:iam::<Account_id>:role/<StudioExecutionRole-Team1>",
+                "arn:aws:iam::<Account_id>:role/<StudioExecutionRole-Team2>"
+            ],
+            "Effect": "Allow"
+        }
+    ]
+}
+```
 
 **3 - SageMaker service**  
 SageMaker service assumes the Studio execution role on your behalf, as controlled by a corresponding trust policy on the execution role. This allows the service to access data and resources, and perform actions on your behalf. The Studio execution role must contain a trust policy allowing SageMaker service to assume this role.
@@ -230,7 +251,7 @@ Furthermore, it allows using delete, stop, update, and start operations only on 
 }
 ```
 
-For more information on roles and polices, refer to the blog post [Configuring Amazon SageMaker Studio for teams and groups with complete resource isolation](https://aws.amazon.com/fr/blogs/machine-learning/configuring-amazon-sagemaker-studio-for-teams-and-groups-with-complete-resource-isolation/).
+For more information on roles and polices, refer to the post [Configuring Amazon SageMaker Studio for teams and groups with complete resource isolation](https://aws.amazon.com/fr/blogs/machine-learning/configuring-amazon-sagemaker-studio-for-teams-and-groups-with-complete-resource-isolation/).
 
 ### Network infrastructure
 The solution implements a fully isolated SageMaker domain environment with all network traffic going through [AWS PrivateLink](https://aws.amazon.com/privatelink) connections. You may optionally enable internet access from the Studio notebooks. The solution also creates three [VPC security groups](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html) to control traffic between all solution components such as the SAML backend Lambda function, [VPC endpoints](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html), and SageMaker Studio notebooks.
@@ -241,19 +262,19 @@ This solution provisions all required network infrastructure. The CloudFormation
 
 ## Deployment
 To deploy and test the solution you must complete the following steps:
-1. [Deploy solution's stack via a SAM template](#deploy-sam-template)
-2. [Create AWS SSO users](#create-sso-users). You can use your existing AWS SSO users
-3. [Create custom SAML 2.0 applications](#create-custom-saml-20-applications) and assign AWS SSO users to the applications
+1. [Deploy solution's stack via a AWS SAM template](#deploy-sam-template).
+2. [Create AWS SSO users](#create-sso-users), or use your existing AWS SSO users.
+3. [Create custom SAML 2.0 applications](#create-custom-saml-20-applications) and assign AWS SSO users to the applications.
 
 ### Prerequisites
-[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html), [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) and [python3.8 or later](https://www.python.org/downloads/) must be installed.
+[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html), [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) and [Python3.8 or later](https://www.python.org/downloads/) must be installed.
 
 The deployment procedure assumes that AWS SSO has been enabled and configured for the [AWS Organization](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_introduction.html) where the solution will be deployed.
 
 You can follow these [instructions](./aws-sso-setup.md) to setup AWS Single Sign-On.
 
 ### Solution deployment options
-You can choose several solution deployment option to have the best fit into your existing AWS environment. You can select network and SageMaker domain provisioning options.
+You can choose several solution deployment option to have the best fit for your existing AWS environment. You can select network and SageMaker domain provisioning options.
 
 #### Network deployment options
 There are following network infrastructure deployment options:
@@ -313,17 +334,17 @@ export DOMAIN_ID=$(aws sagemaker list-domains --output text --query 'Domains[0].
 aws sagemaker describe-domain --domain-id $DOMAIN_ID --output text --query 'AuthMode'
 ```
 
-### Deploy SAM template
+### Deploy the AWS SAM template
 1. Install [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) if you do not have it
 2. Clone the source code repository to your local environment:
 ```sh
 git clone git@ssh.gitlab.aws.dev:ilyiny/amazon-sagemaker-team-and-user-management-sso.git
 ```
-3. Build SAM application:
+3. Build AWS SAM application:
 ```bash
 sam build
 ```
-4. Deploy SAM application:
+4. Deploy the application:
 ```bash
 sam deploy --guided
 ```
@@ -359,11 +380,11 @@ aws cloudformation describe-stacks \
     --query "Stacks[0].Outputs[*].[OutputKey, OutputValue]"
 ```
 
-### Create SSO users
-Follow [add AWS SSO user instructions](./aws-sso-setup.md#add-aws-sso-users) to create two users with names `User1` and `User2` or use any two of your existing AWS SSO users to test the solution. Make sure you use AWS SSO in the same AWS region in which you deployed the solution.  Retrieve the identity store id which you need for the next step.
+### Create AWS SSO users
+Follow [add AWS SSO user instructions](./aws-sso-setup.md#add-aws-sso-users) to create two users with names `User1` and `User2` or use any two of your existing AWS SSO users to test the solution. Make sure you use AWS SSO in the same AWS Region in which you deployed the solution.
 
 ### Create custom SAML 2.0 applications
-Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon) on the AWS management account of your AWS Organizations. Make sure you select the same region as the one where you deployed the solution stack.
+Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon) on the AWS management account of your AWS Organizations. Make sure you select the same Region as the one where you deployed the solution stack.
 
 Do the following steps for **each** of two required custom SAML 2.0 applications, for _Team 1_ and for _Team 2_.
 1. Choose **Applications**
@@ -372,8 +393,8 @@ Do the following steps for **each** of two required custom SAML 2.0 applications
 4. Enter an application name in **Display Name**: `SageMaker Studio <Team Name>`, for example `SageMaker Studio Team 1`
 5. Leave **Application start URL** and **Relay state** empty in **Application Properties**
 6. Click **If you don't have a metadata file, you can manually type your metadata values**
-7. Set the **Application ACS URL** to the URL provided in the `SAMLBackendEndpoint` key of the SAM stack output
-8. Set the **Application SAML audience** to the URL provided in the `SAMLAudience` key of the SAM stack output
+7. Set the **Application ACS URL** to the URL provided in the `SAMLBackendEndpoint` key of the AWS SAM stack output
+8. Set the **Application SAML audience** to the URL provided in the `SAMLAudience` key of the AWS SAM stack output
 9. Click **Save Changes**
 
 ![](./img/sso-app.png)  
@@ -403,6 +424,8 @@ Click on **SageMaker Studio Team 1**.
 You are redirected to SageMaker Studio instance for _Team 1_ in a new browser window:
 
 ![](./img/signing-to-studio.png)
+
+As the SAML backend Lambda function creates a new user profile first time a user signs in and needs to wait until the profile becomes `InService`, the very first sign-in might timeout. If you get a timeout error, just sign in again.
 
 The first time you start Studio, SageMaker creates a JupyterServer application. This process takes few minutes:
 
@@ -450,10 +473,10 @@ https://docs.aws.amazon.com/singlesignon/latest/userguide/attributemappingsconce
 
 
 ## Clean-up
-To avoid charges, you must remove all project-provisioned and generated resources from your AWS account. Use the following SAM CLI command to delete the solution CloudFormation stack:
+To avoid charges, you must remove all project-provisioned and generated resources from your AWS account. Use the following AWS SAM CLI command to delete the solution CloudFormation stack:
 
 ```sh
-sam delete delete-stack --stack-name <stack name of SAM stack>
+sam delete delete-stack --stack-name <stack name of AWS SAM stack>
 ```
 
 ❗ For security reasons and to prevent data loss, the Amazon EFS mount and the content associated with the Amazon SageMaker Studio Domain deployed in this solution **is not** deleted. The VPC and subnets associated with the SageMaker domain remain in your AWS account.

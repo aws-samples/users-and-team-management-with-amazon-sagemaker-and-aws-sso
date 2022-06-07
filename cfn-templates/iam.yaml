@@ -332,7 +332,7 @@ Resources:
               - 'sagemaker:CreatePresignedDomainUrl'
               - 'sagemaker:ListUserProfiles'
               - 'sagemaker:CreateUserProfile'
-              - 'sagemaker:DescribeUseProfile'
+              - 'sagemaker:DescribeUserProfile'
             Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
 
   SAMLBackendLambdaExecutionRole:
@@ -354,6 +354,16 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Policies:
+        - PolicyName: PassExecutionRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource:
+                  - !GetAtt SageMakerStudioExecutionRoleTeam1.Arn
+                  - !GetAtt SageMakerStudioExecutionRoleTeam2.Arn
         - PolicyName: AccessVPCResources
           PolicyDocument:
             Version: '2012-10-17'
