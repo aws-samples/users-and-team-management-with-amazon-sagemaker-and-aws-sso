@@ -263,7 +263,7 @@ This solution provisions all required network infrastructure. The CloudFormation
 ## Deployment
 To deploy and test the solution you must complete the following steps:
 1. [Deploy solution's stack via a AWS SAM template](#deploy-sam-template).
-2. [Create AWS SSO users](#create-sso-users), or use your existing AWS SSO users.
+2. [Create AWS SSO users](#create-aws-sso-users), or use your existing AWS SSO users.
 3. [Create custom SAML 2.0 applications](#create-custom-saml-20-applications) and assign AWS SSO users to the applications.
 
 ### Prerequisites
@@ -388,50 +388,49 @@ Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon) on the A
 
 Do the following steps for **each** of two required custom SAML 2.0 applications, for _Team 1_ and for _Team 2_.
 1. Choose **Applications**
-2. Click **Add a new application**
+2. Choose **Add a new application**
 3. Choose **Add a custom SAML 2.0 application**
-4. Enter an application name in **Display Name**: `SageMaker Studio <Team Name>`, for example `SageMaker Studio Team 1`
+4. For **Display Name**, enter an application name, for example `SageMaker Studio Team 1`
 5. Leave **Application start URL** and **Relay state** empty in **Application Properties**
-6. Click **If you don't have a metadata file, you can manually type your metadata values**
-7. Set the **Application ACS URL** to the URL provided in the `SAMLBackendEndpoint` key of the AWS SAM stack output
-8. Set the **Application SAML audience** to the URL provided in the `SAMLAudience` key of the AWS SAM stack output
-9. Click **Save Changes**
+6. Choose **If you don't have a metadata file, you can manually type your metadata values.**
+7. For **Application ACS URL**, enter the URL provided in the `SAMLBackendEndpoint` key of the AWS SAM stack output
+8. For **Application SAML audience**, enter the URL provided in the `SAMLAudience` key of the AWS SAM stack output
+9. Choose **Save Changes**
 
 ![](./img/sso-app.png)  
 
-10. Go to the **Attribute mappings** tab
+10. Navigate to the **Attribute mappings** tab
 11. Set the Subject to **email** and format **emailAddress**
-12. Add new attributes:
+12. Add the following new attributes:
     - `ssouserid` set to `${user:AD_GUID}`
     - `teamid` set to `Team1` or `Team2` respectively for each of the two applications
 
 ![](./img/sso-app-mapping.png)
 
-13. Click **Save Changes**
-14. Go to the **Assigned users** tab
-15. Click **Assign users**
-16. Select the _User 1_ for the _Team 1_ application and both _User 1_ and _User 2_ for _Team 2_ application
-17. Click **Assign users**
+13. Choose **Save Changes**
+14. On the **Assigned users** tab, choose **Assign users**
+16. Choose the _User 1_ for the _Team 1_ application and both _User 1_ and _User 2_ for _Team 2_ application
+17. Choose **Assign users**
  
 ![](./img/sso-app-user.png)
 
 ## Test the solution
-Go to AWS SSO user portal `https://<Identity Store ID>.awsapps.com/start` and sign as _User 1_. You see now two SageMaker applications in the portal:
+Go to AWS SSO user portal `https://<Identity Store ID>.awsapps.com/start` and sign as _User 1_. Two SageMaker applications are shown in the portal:
 
 ![](img/sso-custom-apps.png)
 
-Click on **SageMaker Studio Team 1**. 
-You are redirected to SageMaker Studio instance for _Team 1_ in a new browser window:
+Choose on **SageMaker Studio Team 1**. 
+You're redirected to SageMaker Studio instance for _Team 1_ in a new browser window:
 
 ![](./img/signing-to-studio.png)
 
-As the SAML backend Lambda function creates a new user profile first time a user signs in and needs to wait until the profile becomes `InService`, the very first sign-in might timeout. If you get a timeout error, just sign in again.
+Because the SAML backend Lambda function creates a new user profile first time a user signs in and needs to wait until the profile becomes `InService`, the very first sign-in might timeout. If you get a timeout error, just sign in again.
 
 The first time you start Studio, SageMaker creates a JupyterServer application. This process takes few minutes:
 
 ![](./img/starting-sm-studio.png)
 
-In Studio, start a new terminal in **File** > **New** > **Terminal**. In the terminal command line enter the command:
+In Studio, on the **File** menu, choose **New** and **Terminal** to start a new terminal. In the terminal command line enter the command:
 ```sh
 aws sts get-caller-identity
 ```
@@ -441,7 +440,7 @@ The command returns the Studio execution role:
 
 In our setup, this role must be different for each team. You can also check that each user in each instance of Studio has their own home directory on a mounted Amazon EFS volume.
 
-Now go back to AWS SSO portal still logged as _User 1_ and click on **SageMaker Studio Team 2** application. You are redirected to a _Team 2_ Studio instance:
+Return to AWS SSO portal, still logged as _User 1_ and choose on **SageMaker Studio Team 2** application. You're redirected to a _Team 2_ Studio instance:
 
 ![](./img/signing-to-studio-2.png)
 
@@ -463,10 +462,11 @@ You just implemented a PoC solution to manage multiple user and teams with Studi
 
 ![idp-sso-sync](design/aws-sso-idp-synchronization.drawio.svg)
 
-TBD
+_in development_
 
 ## Access management with ABAC
-TBD
+_in development_
+
 https://docs.aws.amazon.com/singlesignon/latest/userguide/configure-abac.html
 
 https://docs.aws.amazon.com/singlesignon/latest/userguide/attributemappingsconcept.html#defaultattributemappings
@@ -479,17 +479,14 @@ To avoid charges, you must remove all project-provisioned and generated resource
 sam delete delete-stack --stack-name <stack name of AWS SAM stack>
 ```
 
-❗ For security reasons and to prevent data loss, the Amazon EFS mount and the content associated with the Amazon SageMaker Studio Domain deployed in this solution **is not** deleted. The VPC and subnets associated with the SageMaker domain remain in your AWS account.
+❗ For security reasons and to prevent data loss, the Amazon EFS mount and the content associated with the Amazon SageMaker Studio Domain deployed in this solution **are not** deleted. The VPC and subnets associated with the SageMaker domain remain in your AWS account. For instructions to delete the file system and VPC, refer to [Deleting an Amazon EFS file system](https://docs.aws.amazon.com/efs/latest/ug/delete-efs-fs.html) and [Work with VPCs](https://docs.aws.amazon.com/vpc/latest/userguide/working-with-vpcs.html), respectively.
 
-Follow [these instructions](https://docs.aws.amazon.com/efs/latest/ug/delete-efs-fs.html) to delete Amazon EFS and [these instructions](https://docs.aws.amazon.com/vpc/latest/userguide/working-with-vpcs.html) to delete the Amazon VPC. 
-
-### How to delete the Custom SAML application
+To delete the custom SAML application, complete the following steps:
 1. Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon) in the SSO management account
-2. Choose **Applications**
-3. Select **SageMaker Studio Team 1**
-4. Go to **Actions** and select **Remove**
-
-Repeat these steps for **SageMaker Studio Team 2** application.
+2. Choose **Applications**.
+3. Select **SageMaker Studio Team 1**.
+4. On the **Actions**, choose **Remove**.
+5. Repeat these steps for **SageMaker Studio Team 2**.
 
 # Resources
 
