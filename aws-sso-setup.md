@@ -38,8 +38,6 @@ Users and groups that you create in your AWS SSO store are available in AWS SSO 
 4. Choose Next: Groups.
 5. Select one or more groups that you want the user to be a member of. Then choose Add user.
 
-:warning:  Make a note of the ```Username``` chose in step 1, you will need it during the deployment of the solution.
-
 ## Retrieve Identity store ID
 
 1. Open the [AWS SSO console](https://console.aws.amazon.com/singlesignon).

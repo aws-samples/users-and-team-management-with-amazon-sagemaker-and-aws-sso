@@ -1,6 +1,6 @@
 # Team and user management with Amazon SageMaker and AWS SSO
 
-This code repository is for the [AWS Machine Learning Blog](https://aws.amazon.com/blogs/machine-learning/) [post]().
+This code repository is for the [AWS Machine Learning Blog](https://aws.amazon.com/blogs/machine-learning/) [post](https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/).
 
 [Amazon SageMaker Studio](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-ui.html) is a web-based integrated development environment (IDE) for machine learning (ML) that lets you build, train, debug, deploy, and monitor your ML models. Each onboarded user in Studio has their own dedicated set of resources, such as compute instances, a home directory on an [Amazon Elastic File System](https://aws.amazon.com/efs/) (Amazon EFS) volume, and a dedicated [Identity and Access Management](https://aws.amazon.com/iam/) (IAM) execution role. 
 
@@ -338,7 +338,7 @@ aws sagemaker describe-domain --domain-id $DOMAIN_ID --output text --query 'Auth
 1. Install [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) if you do not have it
 2. Clone the source code repository to your local environment:
 ```sh
-git clone git@ssh.gitlab.aws.dev:ilyiny/amazon-sagemaker-team-and-user-management-sso.git
+git clone https://github.com/aws-samples/users-and-team-management-with-amazon-sagemaker-and-aws-sso.git
 ```
 3. Build AWS SAM application:
 ```bash
@@ -499,6 +499,8 @@ To delete the custom SAML application, complete the following steps:
 - [Onboarding Amazon SageMaker Studio with AWS SSO and Okta Universal Directory](https://aws.amazon.com/fr/blogs/machine-learning/onboarding-amazon-sagemaker-studio-with-aws-sso-and-okta-universal-directory/)
 - [Configuring Amazon SageMaker Studio for teams and groups with complete resource isolation](https://aws.amazon.com/fr/blogs/machine-learning/configuring-amazon-sagemaker-studio-for-teams-and-groups-with-complete-resource-isolation/)
 - [Secure access to Amazon SageMaker Studio with AWS SSO and a SAML application](https://aws.amazon.com/blogs/machine-learning/secure-access-to-amazon-sagemaker-studio-with-aws-sso-and-a-saml-application/)
+- [Secure Amazon SageMaker Studio presigned URLs Part 1: Foundational infrastructure](https://aws.amazon.com/blogs/machine-learning/secure-amazon-sagemaker-studio-presigned-urls-part-1-foundational-infrastructure/)
+- [Secure Amazon SageMaker Studio presigned URLs Part 2: Private API with JWT authentication ](https://aws.amazon.com/blogs/machine-learning/secure-amazon-sagemaker-studio-presigned-urls-part-2-private-api-with-jwt-authentication/)
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
