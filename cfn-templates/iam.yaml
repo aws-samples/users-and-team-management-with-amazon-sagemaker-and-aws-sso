@@ -333,6 +333,8 @@ Resources:
               - 'sagemaker:ListUserProfiles'
               - 'sagemaker:CreateUserProfile'
               - 'sagemaker:DescribeUserProfile'
+              - 'sagemaker:AddTags'
+              - 'sagemaker:ListTags'
             Resource: !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*/*'
 
   SAMLBackendLambdaExecutionRole:
