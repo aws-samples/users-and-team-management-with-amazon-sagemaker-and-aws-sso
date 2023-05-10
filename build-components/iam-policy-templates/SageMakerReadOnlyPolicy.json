@@ -1,0 +1,65 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sagemaker:Describe*",
+                "sagemaker:GetSearchSuggestions"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerDescribeReadyOnlyPolicy"
+        },
+        {
+            "Action": [
+                "sagemaker:List*"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerListOnlyPolicy"
+        },
+        {
+            "Action": [
+                "sagemaker:*App",
+                "sagemaker:Search",
+                "sagemaker:RenderUiTemplate",
+                "sagemaker:BatchGetMetrics"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerUIandMetricsOnlyPolicy"
+        },
+        {
+            "Action": [
+                "ec2:DescribeDhcpOptions",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeRouteTables",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeVpcEndpoints",
+                "ec2:DescribeVpcs"
+            ],
+            "Resource": [
+                "arn:aws:ec2:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerEC2ReadOnlyPolicy"
+        },
+        {
+            "Action": [
+                "iam:ListRoles"
+            ],
+            "Resource": [
+                "arn:aws:iam::${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerIAMReadOnlyPolicy"
+        }
+    ]
+}

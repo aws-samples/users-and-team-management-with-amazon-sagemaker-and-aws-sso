@@ -1,0 +1,92 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sagemaker:CreateApp"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerStudioCreateApp"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "sagemaker.amazonaws.com"
+                }
+            },
+            "Action": [
+                "iam:PassRole"
+            ],
+            "Resource": [
+                "arn:aws:iam::${ACCOUNT_ID}:role/*AmazonSageMaker*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerStudioIAMPassRole"
+        },
+        {
+            "Action": [
+                "sagemaker:InvokeEndpoint"
+            ],
+            "Resource": [
+                "*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerInvokeEndPointRole"
+        },
+        {
+            "Action": [
+                "sagemaker:AddTags",
+                "sagemaker:ListTags"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerTags"
+        },
+        {
+            "Condition": {
+                "ForAnyValue:StringEquals": {
+                    "aws:TagKeys": [
+                        "Team"
+                    ]
+                },
+                "StringEqualsIfExists": {
+                    "aws:RequestTag/Team": "${aws:PrincipalTag/Team}"
+                }
+            },
+            "Action": [
+                "sagemaker:Create*"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerCreate"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "aws:PrincipalTag/Team": "${sagemaker:ResourceTag/Team}"
+                }
+            },
+            "Action": [
+                "sagemaker:Delete*",
+                "sagemaker:Stop*",
+                "sagemaker:Update*",
+                "sagemaker:Start*",
+                "sagemaker:DisassociateTrialComponent",
+                "sagemaker:AssociateTrialComponent",
+                "sagemaker:BatchPutMetrics"
+            ],
+            "Resource": [
+                "arn:aws:sagemaker:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerUpdateDeleteExecutePolicy"
+        }
+    ]
+}

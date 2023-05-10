@@ -1,0 +1,79 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:AbortMultipartUpload",
+                "s3:DeleteObject",
+                "s3:CreateBucket",
+                "s3:ListBucket",
+                "s3:PutBucketCORS",
+                "s3:ListAllMyBuckets",
+                "s3:GetBucketCORS",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": [
+                "arn:aws:s3:::*SageMaker*",
+                "arn:aws:s3:::*Sagemaker*",
+                "arn:aws:s3:::*sagemaker*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerCRUDAccessS3Policy"
+        },
+        {
+            "Action": [
+                "kms:DescribeKey",
+                "kms:ListAliases"
+            ],
+            "Resource": [
+                "arn:aws:kms:*:${ACCOUNT_ID}:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerReadOnlyAccessKMSPolicy"
+        },
+        {
+            "Action": [
+                "ecr:Set*",
+                "ecr:CompleteLayerUpload",
+                "ecr:Batch*",
+                "ecr:Upload*",
+                "ecr:InitiateLayerUpload",
+                "ecr:Put*",
+                "ecr:Describe*",
+                "ecr:CreateRepository",
+                "ecr:Get*",
+                "ecr:StartImageScan"
+            ],
+            "Resource": [
+                "*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerCRUDAccessECRPolicy"
+        },
+        {
+            "Action": [
+                "cloudwatch:Put*",
+                "cloudwatch:Get*",
+                "cloudwatch:List*",
+                "cloudwatch:DescribeAlarms",
+                "logs:Put*",
+                "logs:Get*",
+                "logs:List*",
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:ListLogDeliveries",
+                "logs:Describe*",
+                "logs:CreateLogDelivery",
+                "logs:PutResourcePolicy",
+                "logs:UpdateLogDelivery"
+            ],
+            "Resource": [
+                "*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AmazonSageMakerCRUDAccessCloudWatchPolicy"
+        }
+    ]
+}

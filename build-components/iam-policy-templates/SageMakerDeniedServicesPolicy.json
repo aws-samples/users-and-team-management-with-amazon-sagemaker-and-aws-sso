@@ -1,0 +1,20 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sagemaker:CreatePresignedNotebookInstanceUrl",
+                "sagemaker:*NotebookInstance",
+                "sagemaker:*NotebookInstanceLifecycleConfig",
+                "sagemaker:CreateUserProfile",
+                "sagemaker:DeleteDomain",
+                "sagemaker:DeleteUserProfile"
+            ],
+            "Resource": [
+                "*"
+            ],
+            "Effect": "Deny",
+            "Sid": "AmazonSageMakerDeniedServices"
+        }
+    ]
+}

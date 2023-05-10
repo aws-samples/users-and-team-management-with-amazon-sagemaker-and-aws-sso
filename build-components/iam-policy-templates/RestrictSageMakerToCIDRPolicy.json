@@ -1,0 +1,17 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Condition": {
+                "NotIpAddress": {
+                    "aws:VpcSourceIp": "0.0.0.0/0"
+                }
+            },
+            "Action": [
+                "sagemaker:*"
+            ],
+            "Resource": "arn:aws:sagemaker:us-east-1:${ACCOUNT_ID}:user-profile/*/*",
+            "Effect": "Deny"
+        }
+    ]
+}
