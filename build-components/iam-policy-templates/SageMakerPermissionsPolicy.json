@@ -1,0 +1,17 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sagemaker:CreatePresignedDomainUrl",
+                "sagemaker:ListUserProfiles",
+                "sagemaker:CreateUserProfile",
+                "sagemaker:DescribeUserProfile",
+                "sagemaker:AddTags",
+                "sagemaker:ListTags"
+            ],
+            "Resource": "arn:aws:sagemaker:us-east-1:${ACCOUNT_ID}:user-profile/*/*",
+            "Effect": "Allow"
+        }
+    ]
+}

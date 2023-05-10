@@ -1,0 +1,10 @@
+{
+    LOG_LEVEL = "INFO",
+    PRESIGNED_URL_EXPIRATION = "5",
+    KEY_NAME_USER_ID = "ssouserid",
+    KEY_NAME_TEAM_ID = "teamid",
+    USER_PROFILE_METADATA = "{
+        \"Team2\": { \"DomainId\": \"${SageMakerDomainID}\", \"UserSettings\": { \"ExecutionRole\": \"arn:aws:iam::${ACCOUNT_ID}:role/SageMakerStudioExecutionRoleTeam2-${RANDOM_STRING}\" }, \"SessionExpiration\": \"43200\", \"Tags\": [{ \"Value\": \"Team2\", \"Key\": \"Team\" }] },
+        \"Team1\": { \"DomainId\": \"${SageMakerDomainID}\", \"UserSettings\": { \"ExecutionRole\": \"arn:aws:iam::${ACCOUNT_ID}:role/SageMakerStudioExecutionRoleTeam1-${RANDOM_STRING}\" }, \"SessionExpiration\": \"43200\", \"Tags\": [{ \"Value\": \"Team1\", \"Key\": \"Team\" }] }
+    }"
+}

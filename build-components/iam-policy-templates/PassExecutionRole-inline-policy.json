@@ -1,0 +1,15 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "iam:PassRole"
+            ],
+            "Resource": [
+                "arn:aws:iam::${ACCOUNT_ID}:role/SageMakerStudioExecutionRoleTeam1-${RANDOM_STRING}",
+                "arn:aws:iam::${ACCOUNT_ID}:role/SageMakerStudioExecutionRoleTeam2-${RANDOM_STRING}"
+            ],
+            "Effect": "Allow"
+        }
+    ]
+}
