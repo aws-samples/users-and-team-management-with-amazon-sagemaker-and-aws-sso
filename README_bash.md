@@ -31,7 +31,7 @@
 
 ## Cleanup
    > :warning: Close the terminal window that you created the cluster in, and open a new terminal before starting this step otherwise you may get errors about your AWS_REGION not set.
-    * Open a **_NEW_** terminal window and `cd` back into `aws-saas-factory-data-isolation-using-hashicorp-vault-in-amazon-eks` and run the following script:
+    * Open a **_NEW_** terminal window and `cd` back into `users-and-team-management-with-amazon-sagemaker-and-aws-sso` and run the following script:
 
 1. The deployed components can be cleaned up by running the following:
 
