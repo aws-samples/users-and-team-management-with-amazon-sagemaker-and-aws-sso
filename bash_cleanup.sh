@@ -15,9 +15,6 @@ aws lambda delete-function \
 
 sleep 60
 
-# aws-support-tools/Lambda/FindEniMappings
-# findEniAssociations --eni eni-0123456789abcef01 --region us-east-1
-
 # Deleting API Gateway
 echo "Deleting API Gateway"
 aws apigateway delete-rest-api \
